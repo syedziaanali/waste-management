@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Go Green — Smart Waste Management for a Cleaner Tomorrow</title>
+<meta name="description" content="Go Green is a smart waste management platform for reporting waste issues, scheduling collections, learning to recycle, and tracking your environmental impact." />
+
+<!-- Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+
+<!-- Tailwind -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          ink: '#101C16',
+          inksoft: '#182922',
+          paper: '#F4F1E6',
+          paperdim: '#EAE6D6',
+          moss: '#2F5D42',
+          mossdeep: '#1F4130',
+          sprout: '#8FBF6D',
+          sproutlight: '#C7E3AE',
+          clay: '#B8703A',
+          claylight: '#E7B98A',
+          charcoal: '#1C2620',
+          sand: '#C9C2A6',
+        },
+        fontFamily: {
+          display: ['Manrope', 'sans-serif'],
+          body: ['Inter', 'sans-serif'],
+          mono: ['JetBrains Mono', 'monospace'],
+        },
+        borderRadius: {
+          xl2: '1.25rem',
+        },
+        boxShadow: {
+          soft: '0 20px 50px -20px rgba(16, 28, 22, 0.35)',
+          card: '0 10px 30px -12px rgba(16, 28, 22, 0.25)',
+        }
+      }
+    }
+  }
+</script>
+
+<!-- Lucide Icons -->
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+
+<!-- Firebase App & Auth SDK (v10 compat) -->
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
+<script src="firebase-config.js"></script>
+
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+
+<link rel="stylesheet" href="style.css" />
+</head>
+<body class="bg-paper text-charcoal font-body antialiased">
+
+<!-- ================= SENSOR GRID BACKDROP ================= -->
+<div class="sensor-grid" aria-hidden="true"></div>
+
+<!-- ================= NAVBAR ================= -->
+<header id="navbar" class="fixed top-0 inset-x-0 z-50 transition-all duration-300">
+  <div class="max-w-7xl mx-auto px-5 sm:px-8">
+    <div id="navInner" class="flex items-center justify-between h-[76px] transition-all duration-300">
+      <a href="#home" class="flex items-center gap-2.5 group">
+        <span class="relative flex h-9 w-9 items-center justify-center rounded-full bg-mossdeep text-sprout">
+          <i data-lucide="recycle" class="w-5 h-5"></i>
+          <span class="pulse-ring"></span>
+        </span>
+        <span class="font-display font-extrabold text-lg tracking-tight text-mossdeep">Go Green</span>
+      </a>
+
+      <nav class="hidden lg:flex items-center gap-1 nav-pill">
+        <a href="#home" class="nav-link">Home</a>
+        <a href="report.html" class="nav-link font-bold text-mossdeep flex items-center gap-1"><i data-lucide="camera" class="w-3.5 h-3.5 text-moss"></i> Report Garbage</a>
+        <a href="track.html" class="nav-link">Track Complaint</a>
+        <a href="#features" class="nav-link">Features</a>
+        <a href="#how-it-works" class="nav-link">How It Works</a>
+        <a href="#segregation" class="nav-link">Recycling Guide</a>
+        <a href="dashboard.html" class="nav-link">Citizen Portal</a>
+      </nav>
+
+      <div class="hidden md:flex items-center gap-2.5" id="navAuthArea">
+        <a href="report.html" class="btn-primary text-xs py-2 px-3.5 flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold shadow-sm">
+          <i data-lucide="camera" class="w-4 h-4"></i> Report Garbage
+        </a>
+        <a href="track.html" class="btn-ghost text-xs py-2 px-3">
+          <i data-lucide="search" class="w-3.5 h-3.5 text-moss"></i> Track
+        </a>
+        <a href="#auth-portal" class="btn-outline text-xs py-2 px-3">Portal</a>
+      </div>
+
+      <button id="menuToggle" class="lg:hidden flex items-center justify-center w-10 h-10 rounded-full bg-white/60 border border-mossdeep/10">
+        <i data-lucide="menu" class="w-5 h-5 text-mossdeep"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- Mobile menu -->
+  <div id="mobileMenu" class="lg:hidden hidden mx-4 mb-3 rounded-2xl bg-white/95 backdrop-blur border border-mossdeep/10 shadow-soft overflow-hidden">
+    <a href="report.html" class="mobile-link font-bold text-emerald-800 flex items-center gap-2">
+      <i data-lucide="camera" class="w-4 h-4 text-emerald-600"></i> Report Garbage (Live Camera)
+    </a>
+    <a href="track.html" class="mobile-link flex items-center gap-2">
+      <i data-lucide="search" class="w-4 h-4 text-moss"></i> Track Complaint Status
+    </a>
+    <a href="#home" class="mobile-link">Home</a>
+    <a href="#features" class="mobile-link">Features</a>
+    <a href="#how-it-works" class="mobile-link">How It Works</a>
+    <a href="#segregation" class="mobile-link">Recycling Guide</a>
+    <a href="dashboard.html" class="mobile-link">Citizen Portal</a>
+    <a href="admin.html" class="mobile-link">Municipal Admin Console</a>
+    <div class="flex gap-2 p-3" id="mobileNavAuthArea">
+      <a href="report.html" class="btn-primary flex-1 text-center bg-emerald-700 text-white font-bold py-2">Report Garbage</a>
+      <a href="track.html" class="btn-ghost flex-1 text-center py-2">Track ID</a>
+    </div>
+  </div>
+</header>
+
+<!-- ================= HERO ================= -->
+<section id="home" class="relative pt-28 sm:pt-40 pb-16 sm:pb-28 px-4 sm:px-8 overflow-hidden">
+  <div class="max-w-7xl mx-auto grid lg:grid-cols-[1.05fr_0.95fr] gap-10 sm:gap-16 items-center">
+    <div class="reveal">
+      <div class="eyebrow"><span class="dot"></span> Live in 42 wards across the city</div>
+      <h1 class="font-display font-extrabold text-3xl sm:text-5xl lg:text-6xl leading-[1.1] sm:leading-[1.05] tracking-tight text-mossdeep mt-4 sm:mt-5">
+        Smart waste management starts with <span class="text-underline">you</span>.
+      </h1>
+      <p class="mt-4 sm:mt-6 text-base sm:text-lg text-charcoal/70 max-w-xl leading-relaxed">
+        Report roadside garbage with live camera & GPS coordinates, track municipal cleanup in real time, schedule collections, and build a cleaner city.
+      </p>
+      <div class="mt-7 sm:mt-9 flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4">
+        <a href="report.html" class="btn-primary btn-lg shadow-lg flex items-center justify-center gap-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold w-full sm:w-auto">
+          <i data-lucide="camera" class="w-5 h-5"></i> Report Garbage
+        </a>
+        <a href="track.html" class="btn-outline btn-lg flex items-center justify-center gap-2 w-full sm:w-auto">
+          <i data-lucide="search" class="w-4 h-4 text-moss"></i> Track Complaint
+        </a>
+        <a href="dashboard.html" class="btn-ghost btn-lg flex items-center justify-center gap-2 w-full sm:w-auto" id="heroPortalBtn">
+          <i data-lucide="layout-dashboard" class="w-4 h-4"></i> Citizen Portal
+        </a>
+      </div>
+
+      <div class="mt-12 flex items-center gap-8 flex-wrap">
+        <div>
+          <p class="font-display font-extrabold text-2xl text-mossdeep">4.9<span class="text-clay">/5</span></p>
+          <p class="text-xs text-charcoal/50 mt-1">Citizen satisfaction</p>
+        </div>
+        <div class="w-px h-10 bg-charcoal/10"></div>
+        <div>
+          <p class="font-display font-extrabold text-2xl text-mossdeep">18 min</p>
+          <p class="text-xs text-charcoal/50 mt-1">Avg. response time</p>
+        </div>
+        <div class="w-px h-10 bg-charcoal/10"></div>
+        <div>
+          <p class="font-display font-extrabold text-2xl text-mossdeep">42</p>
+          <p class="text-xs text-charcoal/50 mt-1">Wards connected</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="relative reveal" style="animation-delay:.1s">
+      <div class="hero-visual">
+        <div class="hero-visual-inner">
+          <div class="hero-scan"></div>
+          <div class="flex items-center justify-between">
+            <span class="badge-chip"><i data-lucide="satellite-dish" class="w-3.5 h-3.5"></i> Live sensor feed</span>
+            <span class="text-xs font-mono text-sprout/80">● online</span>
+          </div>
+          <div class="mt-6 grid grid-cols-3 gap-3">
+            <div class="bin-tile bin-tile--low"><i data-lucide="trash-2" class="w-4 h-4"></i><span>Ward 4</span><b>22%</b></div>
+            <div class="bin-tile bin-tile--mid"><i data-lucide="trash-2" class="w-4 h-4"></i><span>Ward 9</span><b>61%</b></div>
+            <div class="bin-tile bin-tile--high"><i data-lucide="trash-2" class="w-4 h-4"></i><span>Ward 2</span><b>88%</b></div>
+            <div class="bin-tile bin-tile--low"><i data-lucide="trash-2" class="w-4 h-4"></i><span>Ward 7</span><b>15%</b></div>
+            <div class="bin-tile bin-tile--mid"><i data-lucide="trash-2" class="w-4 h-4"></i><span>Ward 1</span><b>54%</b></div>
+            <div class="bin-tile bin-tile--low"><i data-lucide="trash-2" class="w-4 h-4"></i><span>Ward 6</span><b>30%</b></div>
+          </div>
+          <div class="mt-6 h-24 rounded-xl bg-mossdeep/40 p-3 flex items-end gap-1.5">
+            <div class="mini-bar" style="--h:40%"></div><div class="mini-bar" style="--h:65%"></div>
+            <div class="mini-bar" style="--h:35%"></div><div class="mini-bar" style="--h:80%"></div>
+            <div class="mini-bar" style="--h:55%"></div><div class="mini-bar" style="--h:70%"></div>
+            <div class="mini-bar" style="--h:45%"></div><div class="mini-bar" style="--h:90%"></div>
+            <div class="mini-bar" style="--h:60%"></div><div class="mini-bar" style="--h:50%"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="float-card float-card--1">
+        <i data-lucide="check-circle-2" class="w-5 h-5 text-moss"></i>
+        <div><p class="font-display font-bold text-lg leading-none">12,500+</p><p class="text-[11px] text-charcoal/50 mt-1">Waste Reports Resolved</p></div>
+      </div>
+      <div class="float-card float-card--2">
+        <i data-lucide="recycle" class="w-5 h-5 text-clay"></i>
+        <div><p class="font-display font-bold text-lg leading-none">8,750 kg</p><p class="text-[11px] text-charcoal/50 mt-1">Waste Recycled</p></div>
+      </div>
+      <div class="float-card float-card--3">
+        <i data-lucide="users" class="w-5 h-5 text-moss"></i>
+        <div><p class="font-display font-bold text-lg leading-none">5,000+</p><p class="text-[11px] text-charcoal/50 mt-1">Active Citizens</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= FEATURES ================= -->
+<section id="features" class="py-28 px-5 sm:px-8 bg-white/50 border-y border-mossdeep/10">
+  <div class="max-w-7xl mx-auto">
+    <div class="max-w-2xl reveal">
+      <p class="eyebrow"><span class="dot"></span> Platform</p>
+      <h2 class="section-title mt-4">Everything you need for smarter waste management</h2>
+      <p class="section-sub">One platform to report, schedule, recycle, and measure — built for citizens and city teams alike.</p>
+    </div>
+
+    <div class="mt-14 grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+      <div class="feature-card reveal">
+        <div class="feature-icon"><i data-lucide="megaphone" class="w-5 h-5"></i></div>
+        <h3>Report Waste Issues</h3>
+        <p>Flag garbage dumping, overflowing bins, illegal dumping, and other waste problems in seconds.</p>
+      </div>
+      <div class="feature-card reveal" style="animation-delay:.05s">
+        <div class="feature-icon"><i data-lucide="calendar-check" class="w-5 h-5"></i></div>
+        <h3>Schedule Collection</h3>
+        <p>Book a convenient waste collection time directly from the platform, no phone calls needed.</p>
+      </div>
+      <div class="feature-card reveal" style="animation-delay:.1s">
+        <div class="feature-icon"><i data-lucide="map-pin" class="w-5 h-5"></i></div>
+        <h3>Track Collection</h3>
+        <p>Follow the status of your waste collection requests in real time, from pickup to disposal.</p>
+      </div>
+      <div class="feature-card reveal" style="animation-delay:.15s">
+        <div class="feature-icon"><i data-lucide="rotate-cw" class="w-5 h-5"></i></div>
+        <h3>Recycling Support</h3>
+        <p>Learn exactly how to sort and recycle different types of waste, the right way, every time.</p>
+      </div>
+      <div class="feature-card reveal" style="animation-delay:.2s">
+        <div class="feature-icon"><i data-lucide="bar-chart-3" class="w-5 h-5"></i></div>
+        <h3>Waste Analytics</h3>
+        <p>Monitor waste generation, recycling activity, and your household's environmental impact.</p>
+      </div>
+      <div class="feature-card reveal" style="animation-delay:.25s">
+        <div class="feature-icon"><i data-lucide="award" class="w-5 h-5"></i></div>
+        <h3>Green Rewards</h3>
+        <p>Earn eco-points and badges every time you participate in responsible waste management.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= HOW IT WORKS ================= -->
+<section id="how-it-works" class="py-28 px-5 sm:px-8">
+  <div class="max-w-7xl mx-auto">
+    <div class="max-w-2xl mx-auto text-center reveal">
+      <p class="eyebrow justify-center"><span class="dot"></span> Process</p>
+      <h2 class="section-title mt-4">How it works</h2>
+      <p class="section-sub mx-auto">From the moment you report an issue to the moment it's resolved — here's the full journey.</p>
+    </div>
+
+    <div class="mt-16 relative">
+      <div class="hidden lg:block absolute top-8 left-[12%] right-[12%] h-px timeline-line"></div>
+      <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-10">
+        <div class="step reveal">
+          <div class="step-num">01</div>
+          <h3>Report or Schedule</h3>
+          <p>Submit a waste problem or book a collection slot in under a minute.</p>
+        </div>
+        <div class="step reveal" style="animation-delay:.05s">
+          <div class="step-num">02</div>
+          <h3>Our System Processes It</h3>
+          <p>Your request is verified, assigned to a ward team, and tracked automatically.</p>
+        </div>
+        <div class="step reveal" style="animation-delay:.1s">
+          <div class="step-num">03</div>
+          <h3>Waste Gets Collected</h3>
+          <p>The responsible on-ground team collects, sorts, and manages the waste.</p>
+        </div>
+        <div class="step reveal" style="animation-delay:.15s">
+          <div class="step-num">04</div>
+          <h3>Track Your Impact</h3>
+          <p>See exactly how your contribution adds up to a cleaner neighbourhood.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= WASTE SEGREGATION ================= -->
+<section id="segregation" class="py-28 px-5 sm:px-8 bg-mossdeep text-paper relative overflow-hidden">
+  <div class="sensor-grid sensor-grid--dark" aria-hidden="true"></div>
+  <div class="max-w-7xl mx-auto relative">
+    <div class="max-w-2xl reveal">
+      <p class="eyebrow eyebrow--dark"><span class="dot"></span> Recycling Guide</p>
+      <h2 class="section-title section-title--dark mt-4">Know your waste. Sort it right.</h2>
+      <p class="section-sub section-sub--dark">Four categories cover almost everything that leaves your home. Get the sort right, and the rest takes care of itself.</p>
+    </div>
+
+    <div class="mt-14 grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
+      <div class="seg-card seg-card--organic reveal">
+        <i data-lucide="leaf" class="w-6 h-6"></i>
+        <h3>Organic Waste</h3>
+        <ul><li>Food waste</li><li>Vegetable peels</li><li>Garden waste</li></ul>
+        <button class="seg-link">Learn more <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i></button>
+      </div>
+      <div class="seg-card seg-card--recyclable reveal" style="animation-delay:.05s">
+        <i data-lucide="recycle" class="w-6 h-6"></i>
+        <h3>Recyclable Waste</h3>
+        <ul><li>Paper</li><li>Plastic</li><li>Glass &amp; metal</li></ul>
+        <button class="seg-link">Learn more <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i></button>
+      </div>
+      <div class="seg-card seg-card--hazardous reveal" style="animation-delay:.1s">
+        <i data-lucide="triangle-alert" class="w-6 h-6"></i>
+        <h3>Hazardous Waste</h3>
+        <ul><li>Batteries</li><li>Chemicals</li><li>Electronic waste</li></ul>
+        <button class="seg-link">Learn more <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i></button>
+      </div>
+      <div class="seg-card seg-card--ewaste reveal" style="animation-delay:.15s">
+        <i data-lucide="cpu" class="w-6 h-6"></i>
+        <h3>E-Waste</h3>
+        <ul><li>Mobile phones</li><li>Chargers</li><li>Computers</li></ul>
+        <button class="seg-link">Learn more <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i></button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= IMPACT STATS ================= -->
+<section class="py-24 px-5 sm:px-8 bg-white/50 border-b border-mossdeep/10">
+  <div class="max-w-7xl mx-auto">
+    <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
+      <div class="stat-card reveal">
+        <i data-lucide="flag" class="w-5 h-5 text-clay"></i>
+        <p class="stat-num" data-count="25000" data-suffix="+">0</p>
+        <p class="stat-label">Waste Reports</p>
+      </div>
+      <div class="stat-card reveal" style="animation-delay:.05s">
+        <i data-lucide="truck" class="w-5 h-5 text-clay"></i>
+        <p class="stat-num" data-count="18500" data-suffix="+">0</p>
+        <p class="stat-label">Successful Collections</p>
+      </div>
+      <div class="stat-card reveal" style="animation-delay:.1s">
+        <i data-lucide="recycle" class="w-5 h-5 text-clay"></i>
+        <p class="stat-num" data-count="12000" data-suffix=" kg">0</p>
+        <p class="stat-label">Waste Recycled</p>
+      </div>
+      <div class="stat-card reveal" style="animation-delay:.15s">
+        <i data-lucide="sprout" class="w-5 h-5 text-clay"></i>
+        <p class="stat-num" data-count="8000" data-suffix="+">0</p>
+        <p class="stat-label">Green Citizens</p>
+      </div>
+    </div>
+    <p class="text-center mt-12 font-display font-semibold text-xl text-mossdeep reveal">
+      Together, small actions create a massive environmental impact.
+    </p>
+  </div>
+</section>
+
+<!-- ================= REPORT WASTE ================= -->
+<section id="report" class="py-28 px-5 sm:px-8 bg-white/50 border-y border-mossdeep/10">
+  <div class="max-w-5xl mx-auto">
+    <div class="max-w-2xl reveal">
+      <p class="eyebrow"><span class="dot"></span> Report Waste</p>
+      <h2 class="section-title mt-4">Seen a waste problem? Tell us.</h2>
+      <p class="section-sub">Add a few details and a photo — your ward team gets notified instantly.</p>
+    </div>
+
+    <!-- Smart Garbage Reporting Banner -->
+    <div class="mt-8 mb-8 p-6 sm:p-8 rounded-3xl bg-gradient-to-r from-mossdeep via-moss to-mossdeep text-paper shadow-soft flex flex-col md:flex-row items-center justify-between gap-6 reveal">
+      <div class="space-y-2">
+        <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/15 backdrop-blur text-sproutlight text-xs font-semibold">
+          <i data-lucide="camera" class="w-3.5 h-3.5 text-sprout"></i> Real-Time Camera & GPS Geotagging
+        </span>
+        <h3 class="font-display font-extrabold text-2xl sm:text-3xl text-white">Smart Garbage Reporting Console</h3>
+        <p class="text-xs sm:text-sm text-paper/80 max-w-xl">
+          Point your device camera directly at roadside trash, auto-detect precise GPS coordinates on an interactive map, and submit directly to municipal authorities.
+        </p>
+      </div>
+      <div class="flex flex-col sm:flex-row gap-3 shrink-0 w-full md:w-auto">
+        <a href="report.html" class="btn-primary py-3.5 px-6 rounded-2xl text-xs sm:text-sm font-bold bg-sprout text-mossdeep hover:bg-sproutlight shadow-md flex items-center justify-center gap-2">
+          <i data-lucide="camera" class="w-4 h-4"></i> Launch Smart Camera
+        </a>
+        <a href="track.html" class="btn-outline py-3.5 px-5 rounded-2xl text-xs sm:text-sm font-bold border-paper/40 text-paper hover:bg-white/10 flex items-center justify-center gap-2">
+          <i data-lucide="search" class="w-4 h-4"></i> Track Complaint
+        </a>
+      </div>
+    </div>
+
+    <form id="reportForm" class="mt-8 form-card reveal" novalidate>
+      <div class="grid sm:grid-cols-2 gap-5">
+        <div class="field">
+          <label for="repName">Full Name</label>
+          <input id="repName" name="repName" type="text" placeholder="Your full name" required />
+          <span class="error-msg">Please enter your full name.</span>
+        </div>
+        <div class="field">
+          <label for="repEmail">Email Address</label>
+          <input id="repEmail" name="repEmail" type="email" placeholder="you@example.com" required />
+          <span class="error-msg">Please enter a valid email.</span>
+        </div>
+        <div class="field">
+          <label for="repType">Waste Type</label>
+          <select id="repType" name="repType" required>
+            <option value="" disabled selected>Select waste type</option>
+            <option>Plastic Waste</option>
+            <option>Organic Waste</option>
+            <option>E-Waste</option>
+            <option>Hazardous Waste</option>
+            <option>Mixed Waste</option>
+            <option>Other</option>
+          </select>
+          <span class="error-msg">Please select a waste type.</span>
+        </div>
+        <div class="field">
+          <label for="repLocation">Location</label>
+          <div class="relative">
+            <input id="repLocation" name="repLocation" type="text" placeholder="Street, area, landmark" required />
+            <button type="button" id="pinBtn" class="pin-btn" aria-label="Use current location"><i data-lucide="map-pin" class="w-4 h-4"></i></button>
+          </div>
+          <span class="error-msg">Please enter a location.</span>
+        </div>
+      </div>
+
+      <div class="field mt-5">
+        <label for="repDesc">Description</label>
+        <textarea id="repDesc" name="repDesc" rows="4" placeholder="Describe what you saw..." required></textarea>
+        <span class="error-msg">Please add a short description.</span>
+      </div>
+
+      <div class="mt-5">
+        <label class="block text-sm font-semibold text-mossdeep mb-2">Upload Image</label>
+        <div id="dropZone" class="drop-zone">
+          <i data-lucide="upload-cloud" class="w-6 h-6 text-moss"></i>
+          <p><span class="text-moss font-semibold">Click to upload</span> or drag and drop</p>
+          <p class="text-xs text-charcoal/40">PNG, JPG up to 10MB</p>
+          <input id="fileInput" type="file" accept="image/*" class="hidden" />
+        </div>
+        <p id="fileName" class="text-xs text-moss mt-2 hidden"></p>
+      </div>
+
+      <button type="submit" class="btn-primary btn-lg mt-7 w-full sm:w-auto">
+        <i data-lucide="send" class="w-4 h-4"></i> Submit Report
+      </button>
+    </form>
+  </div>
+</section>
+
+<!-- ================= COLLECTION SCHEDULING ================= -->
+<section id="collection" class="py-28 px-5 sm:px-8">
+  <div class="max-w-5xl mx-auto">
+    <div class="max-w-2xl reveal">
+      <p class="eyebrow"><span class="dot"></span> Collection</p>
+      <h2 class="section-title mt-4">Schedule a pickup that suits you</h2>
+      <p class="section-sub">Pick a waste type, a slot, and we'll take it from there.</p>
+    </div>
+
+    <div class="mt-10 grid lg:grid-cols-[1.2fr_0.8fr] gap-6">
+      <form id="scheduleForm" class="form-card reveal" novalidate>
+        <div class="grid sm:grid-cols-2 gap-5">
+          <div class="field">
+            <label for="schType">Waste Type</label>
+            <select id="schType" required>
+              <option value="" disabled selected>Select waste type</option>
+              <option>Household Waste</option>
+              <option>Recyclables</option>
+              <option>E-Waste</option>
+              <option>Garden Waste</option>
+              <option>Bulk Items</option>
+            </select>
+            <span class="error-msg">Please select a waste type.</span>
+          </div>
+          <div class="field">
+            <label for="schDate">Preferred Date</label>
+            <input id="schDate" type="date" required />
+            <span class="error-msg">Please pick a date.</span>
+          </div>
+        </div>
+
+        <div class="field mt-5">
+          <label>Preferred Time</label>
+          <div id="slotGrid" class="slot-grid">
+            <button type="button" class="slot">7:00 – 9:00 AM</button>
+            <button type="button" class="slot">9:00 – 11:00 AM</button>
+            <button type="button" class="slot">2:00 – 4:00 PM</button>
+            <button type="button" class="slot">4:00 – 6:00 PM</button>
+          </div>
+          <span class="error-msg" id="slotError">Please choose a time slot.</span>
+        </div>
+
+        <div class="field mt-5">
+          <label for="schAddress">Address</label>
+          <input id="schAddress" type="text" placeholder="Full pickup address" required />
+          <span class="error-msg">Please enter an address.</span>
+        </div>
+
+        <div class="field mt-5">
+          <label for="schNotes">Additional Notes</label>
+          <textarea id="schNotes" rows="3" placeholder="Gate code, quantity, anything we should know..."></textarea>
+        </div>
+
+        <button type="submit" class="btn-primary btn-lg mt-7 w-full sm:w-auto">
+          <i data-lucide="calendar-check" class="w-4 h-4"></i> Confirm Schedule
+        </button>
+      </form>
+
+      <div id="confirmCard" class="confirm-card reveal">
+        <i data-lucide="calendar-clock" class="w-8 h-8 text-moss"></i>
+        <p class="font-display font-semibold text-mossdeep mt-3">Your confirmation will appear here</p>
+        <p class="text-sm text-charcoal/50 mt-1">Fill the form and confirm to see your collection details.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= CITIZEN AUTHENTICATION PORTAL (EMBEDDED) ================= -->
+<section id="auth-portal" class="py-24 px-5 sm:px-8 bg-paperdim/70 border-y border-mossdeep/10 relative overflow-hidden">
+  <div class="max-w-4xl mx-auto">
+    
+    <!-- Heading -->
+    <div class="text-center max-w-xl mx-auto reveal mb-10">
+      <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-sprout/20 text-mossdeep text-xs font-bold mb-3">
+        🌱 Verified Citizen Gateway
+      </div>
+      <h2 class="font-display font-extrabold text-3xl sm:text-4xl text-mossdeep tracking-tight">
+        Sign In or Create Your Account
+      </h2>
+      <p class="mt-2 text-sm text-charcoal/70">
+        Access your live environmental scorecard, Vision AI waste scanner, IoT bin emergency dispatch, and Eco-Rewards marketplace.
+      </p>
+    </div>
+
+    <!-- Active User State (Shown if already logged in) -->
+    <div id="portalLoggedInCard" class="hidden bg-white rounded-3xl p-8 border-2 border-moss shadow-soft text-center space-y-4 max-w-xl mx-auto reveal">
+      <div class="w-16 h-16 rounded-full bg-sproutlight text-mossdeep font-display font-bold text-2xl mx-auto flex items-center justify-center shadow-inner" id="portalUserAvatar">
+        GG
+      </div>
+      <div>
+        <span class="text-xs uppercase font-mono tracking-widest text-clay font-bold">Active Session</span>
+        <h3 class="font-display font-extrabold text-2xl text-mossdeep mt-0.5" id="portalUserName">Welcome Back!</h3>
+        <p class="text-xs text-charcoal/60 mt-1" id="portalUserDetails">You are currently authenticated as an active citizen.</p>
+      </div>
+      <div class="pt-2 flex flex-col sm:flex-row gap-3 justify-center">
+        <a href="dashboard.html" class="btn-primary py-3 px-6 text-sm font-bold shadow-md">
+          <i data-lucide="layout-dashboard" class="w-4 h-4"></i> Open Full Citizen Dashboard →
+        </a>
+        <button id="portalLogoutBtn" class="btn-outline py-3 px-5 text-xs font-semibold text-charcoal/70 hover:text-red-700">
+          Switch Account / Log Out
+        </button>
+      </div>
+    </div>
+
+    <!-- Guest Auth Card (Shown if not logged in) -->
+    <div id="portalGuestCard" class="bg-white rounded-3xl p-6 sm:p-10 border border-mossdeep/15 shadow-soft max-w-xl mx-auto reveal">
+      
+      <!-- Tab Switcher -->
+      <div class="flex p-1 bg-paperdim rounded-2xl mb-6">
+        <button id="portalTabLogin" class="flex-1 py-2.5 rounded-xl font-display font-bold text-xs text-mossdeep bg-white shadow-xs transition">
+          Sign In to Portal
+        </button>
+        <button id="portalTabSignup" class="flex-1 py-2.5 rounded-xl font-display font-bold text-xs text-charcoal/60 hover:text-mossdeep transition">
+          Create New Account
+        </button>
+      </div>
+
+      <!-- Real Google Sign-In Button -->
+      <div class="space-y-3">
+        <button id="portalGoogleBtn" type="button" class="w-full flex items-center justify-center gap-3 py-3.5 px-4 rounded-xl border border-charcoal/20 hover:border-moss hover:bg-paper/50 transition text-xs font-bold text-charcoal shadow-xs active:scale-[0.99]">
+          <svg class="w-4 h-4" viewBox="0 0 24 24">
+            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+          </svg>
+          <span id="portalGoogleBtnText">Continue with Google Account</span>
+        </button>
+
+        <div class="relative flex py-2 items-center">
+          <div class="grow border-t border-charcoal/10"></div>
+          <span class="shrink mx-3 text-[11px] font-mono text-charcoal/40 uppercase">Or with email credentials</span>
+          <div class="grow border-t border-charcoal/10"></div>
+        </div>
+      </div>
+
+      <!-- 1. LOGIN FORM -->
+      <form id="portalLoginForm" class="space-y-4">
+        <div>
+          <label class="block text-xs font-bold text-mossdeep mb-1">Email Address</label>
+          <input type="email" id="portalLoginEmail" placeholder="you@example.com" class="w-full p-3 rounded-xl bg-paperdim border border-mossdeep/20 text-xs font-semibold focus:outline-none focus:border-moss" required />
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-mossdeep mb-1">Password</label>
+          <input type="password" id="portalLoginPassword" placeholder="••••••••" class="w-full p-3 rounded-xl bg-paperdim border border-mossdeep/20 text-xs font-semibold focus:outline-none focus:border-moss" required />
+        </div>
+
+        <!-- Quick Demo Users -->
+        <div class="pt-1">
+          <p class="text-[11px] font-semibold text-charcoal/60 mb-1.5">Quick Demo Autofill:</p>
+          <div class="flex gap-2">
+            <button type="button" class="portal-demo-btn px-2.5 py-1 rounded-lg bg-sprout/20 text-mossdeep font-mono font-bold text-[10px] hover:bg-sprout/40 transition" data-email="ananya@example.com" data-pass="password123">
+              Ananya (Ward 7)
+            </button>
+            <button type="button" class="portal-demo-btn px-2.5 py-1 rounded-lg bg-clay/15 text-clay font-mono font-bold text-[10px] hover:bg-clay/30 transition" data-email="aarav@example.com" data-pass="password123">
+              Aarav (Ward 4)
+            </button>
+          </div>
+        </div>
+
+        <button type="submit" id="portalLoginSubmitBtn" class="btn-primary w-full py-3 rounded-xl text-xs font-bold shadow-md">
+          <i data-lucide="log-in" class="w-4 h-4"></i> Sign In & Launch Dashboard →
+        </button>
+      </form>
+
+      <!-- 2. SIGNUP FORM (Hidden by default) -->
+      <form id="portalSignupForm" class="space-y-4 hidden">
+        <div>
+          <label class="block text-xs font-bold text-mossdeep mb-1">Full Legal Name</label>
+          <input type="text" id="portalSignupName" placeholder="e.g. Rohan Kumar" class="w-full p-3 rounded-xl bg-paperdim border border-mossdeep/20 text-xs font-semibold focus:outline-none focus:border-moss" required />
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-mossdeep mb-1">Email Address</label>
+          <input type="email" id="portalSignupEmail" placeholder="you@example.com" class="w-full p-3 rounded-xl bg-paperdim border border-mossdeep/20 text-xs font-semibold focus:outline-none focus:border-moss" required />
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-mossdeep mb-1">Residential Ward</label>
+          <select id="portalSignupWard" class="w-full p-3 rounded-xl bg-paperdim border border-mossdeep/20 text-xs font-semibold focus:outline-none focus:border-moss" required>
+            <option value="Ward 1">Ward 1 — MG Road / City Center</option>
+            <option value="Ward 2">Ward 2 — North Tech Park</option>
+            <option value="Ward 3">Ward 3 — Civic Center</option>
+            <option value="Ward 4">Ward 4 — Market District</option>
+            <option value="Ward 5">Ward 5 — Riverside Promenade</option>
+            <option value="Ward 6">Ward 6 — Highland Colony</option>
+            <option value="Ward 7" selected>Ward 7 — Lakeview Sector</option>
+            <option value="Ward 8">Ward 8 — Suburban South</option>
+            <option value="Ward 9">Ward 9 — Greenfield Park</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-mossdeep mb-1">Create Password (min 6 chars)</label>
+          <input type="password" id="portalSignupPassword" placeholder="••••••••" minlength="6" class="w-full p-3 rounded-xl bg-paperdim border border-mossdeep/20 text-xs font-semibold focus:outline-none focus:border-moss" required />
+        </div>
+
+        <button type="submit" id="portalSignupSubmitBtn" class="btn-primary w-full py-3 rounded-xl text-xs font-bold shadow-md">
+          <i data-lucide="user-plus" class="w-4 h-4"></i> Create Account & Claim +100 Points →
+        </button>
+      </form>
+
+    </div>
+
+  </div>
+</section>
+
+<!-- ================= GREEN REWARDS ================= -->
+<section class="py-28 px-5 sm:px-8 bg-mossdeep text-paper relative overflow-hidden">
+  <div class="sensor-grid sensor-grid--dark" aria-hidden="true"></div>
+  <div class="max-w-6xl mx-auto relative">
+    <div class="max-w-xl reveal">
+      <p class="eyebrow eyebrow--dark"><span class="dot"></span> Green Rewards</p>
+      <h2 class="section-title section-title--dark mt-4">Your actions make a difference</h2>
+    </div>
+
+    <div class="mt-12 grid lg:grid-cols-[1fr_1.1fr] gap-10 items-center">
+      <div class="reveal">
+        <div class="reward-progress">
+          <div class="flex items-end justify-between">
+            <p class="text-sm text-paper/60">Current Level</p>
+            <p class="font-display font-bold text-2xl">Recycling Hero</p>
+          </div>
+          <div class="progress-track mt-4">
+            <div class="progress-fill" data-target="85"></div>
+          </div>
+          <div class="flex justify-between mt-2 text-xs text-paper/50">
+            <span id="ecoPointsLabel">850 / 1000 Eco Points</span>
+            <span>Level 4</span>
+          </div>
+        </div>
+
+        <div class="mt-6 flex items-center gap-6">
+          <div>
+            <p class="font-display font-bold text-2xl">🔥 14</p>
+            <p class="text-xs text-paper/50 mt-1">Day recycling streak</p>
+          </div>
+          <div class="w-px h-10 bg-paper/15"></div>
+          <div>
+            <p class="font-display font-bold text-2xl">7</p>
+            <p class="text-xs text-paper/50 mt-1">Badges earned</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-4 reveal" style="animation-delay:.1s">
+        <div class="badge-tile"><span class="text-3xl">🌱</span><p>Green Beginner</p></div>
+        <div class="badge-tile"><span class="text-3xl">♻️</span><p>Recycling Hero</p></div>
+        <div class="badge-tile"><span class="text-3xl">🌍</span><p>Eco Warrior</p></div>
+        <div class="badge-tile badge-tile--locked"><span class="text-3xl">🏆</span><p>Planet Protector</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= TESTIMONIALS ================= -->
+<section id="about" class="py-28 px-5 sm:px-8 bg-white/50">
+  <div class="max-w-7xl mx-auto">
+    <div class="max-w-2xl mx-auto text-center reveal">
+      <p class="eyebrow justify-center"><span class="dot"></span> About Us</p>
+      <h2 class="section-title mt-4">Loved by citizens across the city</h2>
+    </div>
+
+    <div class="mt-14 grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+      <div class="testimonial-card reveal">
+        <div class="flex items-center gap-3">
+          <span class="avatar-initials">AS</span>
+          <div><p class="font-semibold text-mossdeep">Aarav Sharma</p><p class="text-xs text-charcoal/40">Ward 4 resident</p></div>
+        </div>
+        <p class="mt-4 text-sm text-charcoal/70">"Go Green made it incredibly easy to report waste problems in my area."</p>
+      </div>
+      <div class="testimonial-card reveal" style="animation-delay:.05s">
+        <div class="flex items-center gap-3">
+          <span class="avatar-initials avatar-initials--clay">PP</span>
+          <div><p class="font-semibold text-mossdeep">Priya Patel</p><p class="text-xs text-charcoal/40">Ward 9 resident</p></div>
+        </div>
+        <p class="mt-4 text-sm text-charcoal/70">"I love the recycling guide and reward system. It actually motivates people to recycle."</p>
+      </div>
+      <div class="testimonial-card reveal" style="animation-delay:.1s">
+        <div class="flex items-center gap-3">
+          <span class="avatar-initials">RV</span>
+          <div><p class="font-semibold text-mossdeep">Rahul Verma</p><p class="text-xs text-charcoal/40">Ward 2 resident</p></div>
+        </div>
+        <p class="mt-4 text-sm text-charcoal/70">"The collection scheduling feature is simple and very useful."</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= CTA ================= -->
+<section class="py-24 px-5 sm:px-8">
+  <div class="max-w-6xl mx-auto cta-band reveal">
+    <div class="sensor-grid sensor-grid--dark" aria-hidden="true"></div>
+    <div class="relative">
+      <h2 class="font-display font-extrabold text-3xl sm:text-4xl text-paper max-w-xl">Ready to make your city greener?</h2>
+      <p class="text-paper/70 mt-3 max-w-lg">Join thousands of citizens who are taking action for a cleaner and more sustainable future.</p>
+      <div class="mt-8 flex flex-wrap gap-4">
+        <a href="#report" class="btn-primary btn-lg">Get Started</a>
+        <a href="#report" class="btn-outline btn-outline--dark btn-lg">Report Waste</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= FOOTER ================= -->
+<footer class="px-5 sm:px-8 pt-16 pb-8 bg-ink text-paper/70">
+  <div class="max-w-7xl mx-auto grid sm:grid-cols-2 lg:grid-cols-4 gap-10">
+    <div>
+      <div class="flex items-center gap-2.5">
+        <span class="flex h-8 w-8 items-center justify-center rounded-full bg-sprout/15 text-sprout"><i data-lucide="recycle" class="w-4 h-4"></i></span>
+        <span class="font-display font-extrabold text-paper">Go Green</span>
+      </div>
+      <p class="text-sm mt-4 max-w-xs">Building smarter solutions for cleaner cities and a sustainable future.</p>
+    </div>
+    <div>
+      <p class="footer-heading">Explore</p>
+      <a href="#home" class="footer-link">Home</a>
+      <a href="#features" class="footer-link">Features</a>
+      <a href="#how-it-works" class="footer-link">How It Works</a>
+      <a href="#segregation" class="footer-link">Recycling Guide</a>
+      <a href="#about" class="footer-link">About Us</a>
+    </div>
+    <div>
+      <p class="footer-heading">Connect</p>
+      <div class="flex gap-3 mt-1">
+        <a href="#" class="social-icon" aria-label="Instagram"><i data-lucide="instagram" class="w-4 h-4"></i></a>
+        <a href="#" class="social-icon" aria-label="LinkedIn"><i data-lucide="linkedin" class="w-4 h-4"></i></a>
+        <a href="#" class="social-icon" aria-label="Twitter / X"><i data-lucide="twitter" class="w-4 h-4"></i></a>
+        <a href="#" class="social-icon" aria-label="Facebook"><i data-lucide="facebook" class="w-4 h-4"></i></a>
+      </div>
+    </div>
+    <div>
+      <p class="footer-heading">Stay updated</p>
+      <p class="text-sm">Get monthly updates on citywide recycling progress.</p>
+    </div>
+  </div>
+  <div class="max-w-7xl mx-auto mt-12 pt-6 border-t border-paper/10 text-xs text-paper/40">
+    © 2026 Go Green Waste Management System. All Rights Reserved.
+  </div>
+</footer>
+
+<!-- Toast -->
+<div id="toast" class="toast"></div>
+
+<script src="session.js"></script>
+<script src="script.js"></script>
+</body>
+</html>

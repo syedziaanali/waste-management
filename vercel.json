@@ -1,0 +1,18 @@
+{
+  "cleanUrls": true,
+  "rewrites": [
+    { "source": "/", "destination": "/frontend/index.html" },
+    { "source": "/index.html", "destination": "/frontend/index.html" },
+    { "source": "/report.html", "destination": "/frontend/report.html" },
+    { "source": "/track.html", "destination": "/frontend/track.html" },
+    { "source": "/dashboard.html", "destination": "/frontend/dashboard.html" },
+    { "source": "/admin.html", "destination": "/frontend/admin.html" },
+    { "source": "/login.html", "destination": "/frontend/login.html" },
+    { "source": "/signup.html", "destination": "/frontend/signup.html" },
+    { "source": "/style.css", "destination": "/frontend/style.css" },
+    { "source": "/script.js", "destination": "/frontend/script.js" },
+    { "source": "/session.js", "destination": "/frontend/session.js" },
+    { "source": "/firebase-config.js", "destination": "/frontend/firebase-config.js" },
+    { "source": "/(.*)", "destination": "/frontend/$1" }
+  ]
+}

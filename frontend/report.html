@@ -1,0 +1,1254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Smart Garbage Reporting System — Go Green</title>
+<meta name="description" content="Capture roadside garbage photos, automatically detect GPS coordinates, and submit verified waste complaints directly to municipal authorities." />
+
+<!-- Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          ink: '#101C16',
+          inksoft: '#182922',
+          paper: '#F4F1E6',
+          paperdim: '#EAE6D6',
+          moss: '#2F5D42',
+          mossdeep: '#1F4130',
+          sprout: '#8FBF6D',
+          sproutlight: '#C7E3AE',
+          clay: '#B8703A',
+          claylight: '#E7B98A',
+          charcoal: '#1C2620',
+          sand: '#C9C2A6',
+        },
+        fontFamily: {
+          display: ['Manrope', 'sans-serif'],
+          body: ['Inter', 'sans-serif'],
+          mono: ['JetBrains Mono', 'monospace'],
+        },
+        borderRadius: {
+          xl2: '1.25rem',
+        },
+        boxShadow: {
+          soft: '0 20px 50px -20px rgba(16, 28, 22, 0.25)',
+          card: '0 10px 30px -12px rgba(16, 28, 22, 0.15)',
+        }
+      }
+    }
+  }
+</script>
+
+<!-- Lucide Icons -->
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+
+<!-- Leaflet Map CSS & JS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+<link rel="stylesheet" href="style.css" />
+<script src="session.js"></script>
+
+<style>
+  /* Custom camera viewfinder & HUD styling */
+  .camera-viewfinder {
+    position: relative;
+    background: #000;
+    border-radius: 1.25rem;
+    overflow: hidden;
+    aspect-ratio: 4 / 3;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .camera-viewfinder video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .hud-grid {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      linear-gradient(to right, rgba(255,255,255,0.08) 1px, transparent 1px) 0 0 / 33.33% 100%,
+      linear-gradient(to bottom, rgba(255,255,255,0.08) 1px, transparent 1px) 0 0 / 100% 33.33%;
+  }
+  .hud-bracket {
+    position: absolute;
+    width: 24px;
+    height: 24px;
+    border-color: #8FBF6D;
+    pointer-events: none;
+  }
+  .hud-tl { top: 16px; left: 16px; border-top: 3px solid #8FBF6D; border-left: 3px solid #8FBF6D; }
+  .hud-tr { top: 16px; right: 16px; border-top: 3px solid #8FBF6D; border-right: 3px solid #8FBF6D; }
+  .hud-bl { bottom: 16px; left: 16px; border-bottom: 3px solid #8FBF6D; border-left: 3px solid #8FBF6D; }
+  .hud-br { bottom: 16px; right: 16px; border-bottom: 3px solid #8FBF6D; border-right: 3px solid #8FBF6D; }
+  
+  .shutter-flash {
+    animation: flashEffect 0.25s ease-out;
+  }
+  @keyframes flashEffect {
+    0% { opacity: 0.9; background: white; }
+    100% { opacity: 0; background: transparent; }
+  }
+
+  .bbox-overlay {
+    position: absolute;
+    border: 2px solid #E7B98A;
+    background: rgba(184, 112, 58, 0.2);
+    border-radius: 4px;
+    pointer-events: none;
+    transition: all 0.2s ease;
+  }
+  .bbox-label {
+    position: absolute;
+    top: -22px;
+    left: -2px;
+    background: #B8703A;
+    color: white;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 4px;
+    white-space: nowrap;
+  }
+
+  /* Interactive leaflet map styling */
+  #mapContainer {
+    height: 260px;
+    width: 100%;
+    border-radius: 1rem;
+    z-index: 10;
+  }
+
+  /* Scanner beam animation */
+  .scanner-beam {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, transparent, #8FBF6D, transparent);
+    box-shadow: 0 0 15px #8FBF6D;
+    animation: scanSweep 2s ease-in-out infinite;
+  }
+  @keyframes scanSweep {
+    0%, 100% { top: 5%; }
+    50% { top: 95%; }
+  }
+</style>
+</head>
+<body class="bg-paper text-charcoal font-body antialiased min-h-screen flex flex-col">
+
+<!-- Background Sensor Backdrop -->
+<div class="sensor-grid" aria-hidden="true"></div>
+
+<!-- ================= TOP APP BAR ================= -->
+<header class="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-mossdeep/10 shadow-xs">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6">
+    <div class="flex items-center justify-between h-16">
+      
+      <!-- Brand Logo -->
+      <a href="index.html" class="flex items-center gap-2.5 group">
+        <span class="relative flex h-8 w-8 items-center justify-center rounded-full bg-mossdeep text-sprout">
+          <i data-lucide="recycle" class="w-4 h-4"></i>
+          <span class="pulse-ring"></span>
+        </span>
+        <span class="font-display font-extrabold text-base tracking-tight text-mossdeep">Go Green</span>
+      </a>
+
+      <!-- Center navigation links -->
+      <div class="hidden sm:flex items-center gap-3">
+        <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-sprout/15 text-mossdeep text-xs font-semibold">
+          <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+          Smart Municipal Dispatch
+        </span>
+      </div>
+
+      <!-- Right actions -->
+      <div class="flex items-center gap-2">
+        <a href="track.html" class="btn-ghost text-xs py-1.5 px-3 flex items-center gap-1.5">
+          <i data-lucide="search" class="w-3.5 h-3.5 text-moss"></i> Track Complaint
+        </a>
+        <a href="dashboard.html" class="btn-outline text-xs py-1.5 px-3 flex items-center gap-1.5" id="userPortalBtn">
+          <i data-lucide="layout-dashboard" class="w-3.5 h-3.5"></i> Dashboard
+        </a>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ================= MAIN CONTAINER ================= -->
+<main class="max-w-4xl mx-auto px-4 sm:px-6 py-8 w-full flex-1">
+
+  <!-- Header Title -->
+  <div class="text-center max-w-2xl mx-auto mb-8">
+    <div class="eyebrow mx-auto mb-2"><span class="dot"></span> Live Camera & Geotagged Reporting</div>
+    <h1 class="font-display font-extrabold text-3xl sm:text-4xl text-mossdeep tracking-tight">
+      Smart Garbage Reporting System
+    </h1>
+    <p class="text-xs sm:text-sm text-charcoal/70 mt-2">
+      Photograph roadside garbage, pinpoint its exact GPS coordinates on the interactive map, and dispatch the complaint to municipal cleanup crews.
+    </p>
+  </div>
+
+  <!-- Step Progress Bar -->
+  <div class="mb-6 sm:mb-8">
+    <div class="grid grid-cols-4 gap-1.5 sm:gap-2 text-center">
+      <div class="step-col text-moss font-bold text-[11px] sm:text-xs" id="stepIndicator1">
+        <div class="h-1.5 rounded-full bg-moss mb-1.5"></div>
+        <span class="hidden sm:inline">1. Photo Capture</span>
+        <span class="sm:hidden">1. Photo</span>
+      </div>
+      <div class="step-col text-charcoal/40 font-semibold text-[11px] sm:text-xs" id="stepIndicator2">
+        <div class="h-1.5 rounded-full bg-charcoal/15 mb-1.5" id="stepBar2"></div>
+        <span class="hidden sm:inline">2. GPS Location</span>
+        <span class="sm:hidden">2. GPS</span>
+      </div>
+      <div class="step-col text-charcoal/40 font-semibold text-[11px] sm:text-xs" id="stepIndicator3">
+        <div class="h-1.5 rounded-full bg-charcoal/15 mb-1.5" id="stepBar3"></div>
+        <span class="hidden sm:inline">3. Details</span>
+        <span class="sm:hidden">3. Details</span>
+      </div>
+      <div class="step-col text-charcoal/40 font-semibold text-[11px] sm:text-xs" id="stepIndicator4">
+        <div class="h-1.5 rounded-full bg-charcoal/15 mb-1.5" id="stepBar4"></div>
+        <span class="hidden sm:inline">4. Dispatch</span>
+        <span class="sm:hidden">4. Dispatch</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Card Form -->
+  <div class="bg-white rounded-3xl p-5 sm:p-8 border border-mossdeep/10 shadow-soft">
+
+    <!-- ================= SECTION 1: LIVE CAMERA & PHOTO CAPTURE ================= -->
+    <div class="space-y-4">
+      <div class="flex items-center justify-between pb-3 border-b border-charcoal/10">
+        <div>
+          <h2 class="font-display font-bold text-lg text-mossdeep flex items-center gap-2">
+            <i data-lucide="camera" class="w-5 h-5 text-moss"></i>
+            Step 1: Capture Garbage Photograph
+          </h2>
+          <p class="text-xs text-charcoal/60 mt-0.5">Use your mobile/laptop camera or upload a clear photo of the roadside waste.</p>
+        </div>
+        <span class="text-[11px] font-mono font-bold text-clay bg-clay/10 px-2.5 py-1 rounded-full">+25 Eco-Points</span>
+      </div>
+
+      <!-- Live Camera Viewfinder Box -->
+      <div id="cameraContainer" class="camera-viewfinder shadow-inner relative">
+        
+        <!-- Video Stream -->
+        <video id="cameraVideo" autoplay playsinline muted class="hidden"></video>
+        
+        <!-- Viewfinder Overlay (HUD) -->
+        <div id="cameraHud" class="hud-grid hidden">
+          <div class="hud-bracket hud-tl"></div>
+          <div class="hud-bracket hud-tr"></div>
+          <div class="hud-bracket hud-bl"></div>
+          <div class="hud-bracket hud-br"></div>
+          <div class="absolute bottom-3 left-3 px-2 py-0.5 rounded bg-black/60 text-sprout font-mono text-[10px]">
+            REAR LENS · 1080P
+          </div>
+        </div>
+
+        <!-- Initial Placeholder when camera is inactive -->
+        <div id="cameraPlaceholder" class="text-center p-6 text-paper/80">
+          <div class="w-16 h-16 rounded-full bg-white/10 flex items-center justify-center mx-auto mb-3 text-sprout">
+            <i data-lucide="video" class="w-8 h-8"></i>
+          </div>
+          <p class="font-display font-bold text-sm text-white">Live Camera is Ready</p>
+          <p class="text-xs text-paper/60 mt-1 max-w-xs mx-auto">
+            Click "Start Live Camera" to activate your device's rear camera with high-resolution capture.
+          </p>
+          <div class="mt-4 flex flex-wrap justify-center gap-2">
+            <button type="button" id="startCameraBtn" class="btn-primary text-xs py-2 px-4 shadow-md flex items-center gap-2">
+              <i data-lucide="camera" class="w-4 h-4"></i> Start Live Camera
+            </button>
+            <label for="fallbackFileInput" class="btn-outline text-xs py-2 px-4 bg-white/10 text-paper border-paper/30 hover:bg-white/20 cursor-pointer flex items-center gap-2">
+              <i data-lucide="upload" class="w-4 h-4"></i> Upload Photo
+            </label>
+          </div>
+        </div>
+
+        <!-- Captured Image Preview & AI Detection Canvas -->
+        <div id="photoPreviewWrapper" class="hidden relative w-full h-full flex items-center justify-center overflow-hidden bg-black">
+          <img id="capturedPhotoImg" src="" alt="Captured Garbage" class="w-full h-full object-cover" />
+          <div id="aiBoundingBoxLayer" class="absolute inset-0 pointer-events-none"></div>
+          
+          <!-- Scanning beam effect -->
+          <div id="scannerBeam" class="scanner-beam hidden"></div>
+        </div>
+
+        <!-- Camera Shutter Flash Element -->
+        <div id="shutterFlash" class="absolute inset-0 pointer-events-none opacity-0"></div>
+
+        <!-- Hidden canvas for capturing bitmap -->
+        <canvas id="captureCanvas" class="hidden"></canvas>
+      </div>
+
+      <!-- Camera Permission Warning Message -->
+      <div id="cameraErrorAlert" class="hidden p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-800 text-xs flex items-start gap-3">
+        <i data-lucide="alert-triangle" class="w-4 h-4 text-red-600 mt-0.5 shrink-0"></i>
+        <div>
+          <p class="font-bold">Camera Access Restricted or Denied</p>
+          <p class="mt-0.5 text-red-700/80" id="cameraErrorMsg">
+            Browser camera permission was denied or device does not have an active camera. You can still upload a photo below.
+          </p>
+          <button type="button" id="retryCameraBtn" class="mt-2 text-xs font-bold text-red-700 underline">Try Requesting Permission Again</button>
+        </div>
+      </div>
+
+      <!-- Camera Action Controls Toolbar -->
+      <div class="flex flex-wrap items-center justify-between gap-3 pt-1">
+        
+        <!-- Live Camera Controls (Visible when camera is active) -->
+        <div id="activeCameraControls" class="hidden flex items-center gap-2 w-full sm:w-auto">
+          <button type="button" id="captureBtn" class="btn-primary flex-1 sm:flex-initial text-xs py-2.5 px-5 flex items-center justify-center gap-2 shadow-lg bg-emerald-600 hover:bg-emerald-700">
+            <span class="w-3 h-3 rounded-full bg-white animate-ping"></span>
+            <i data-lucide="aperture" class="w-4 h-4"></i> Click Photograph
+          </button>
+          <button type="button" id="flipCameraBtn" class="btn-ghost text-xs py-2 px-3 border border-charcoal/10" title="Switch Front/Rear Camera">
+            <i data-lucide="refresh-cw" class="w-3.5 h-3.5 text-moss"></i> Switch Lens
+          </button>
+          <button type="button" id="stopCameraBtn" class="btn-ghost text-xs py-2 px-3 text-red-600 hover:bg-red-50">
+            Cancel Camera
+          </button>
+        </div>
+
+        <!-- Captured Image Controls (Visible after photograph is taken) -->
+        <div id="capturedControls" class="hidden flex items-center gap-2 w-full sm:w-auto">
+          <button type="button" id="retakeBtn" class="btn-ghost text-xs py-2 px-3.5 border border-moss/30 text-mossdeep hover:bg-paperdim flex items-center gap-1.5">
+            <i data-lucide="rotate-ccw" class="w-3.5 h-3.5 text-moss"></i> Retake Photo
+          </button>
+          <label for="fallbackFileInput" class="btn-ghost text-xs py-2 px-3 border border-charcoal/15 cursor-pointer flex items-center gap-1.5">
+            <i data-lucide="upload" class="w-3.5 h-3.5 text-moss"></i> Choose Different File
+          </label>
+        </div>
+
+        <!-- Hidden input for file selection with native camera capture on mobile -->
+        <input type="file" id="fallbackFileInput" accept="image/*" capture="environment" class="hidden" />
+
+        <!-- AI Waste Detection Badge -->
+        <div id="aiDetectionStatus" class="hidden items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-xl bg-sprout/20 text-mossdeep">
+          <i data-lucide="sparkles" class="w-4 h-4 text-emerald-600"></i>
+          <span id="aiDetectionText">Waste detected: Analyzing features...</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= SECTION 2: AUTOMATIC GPS LOCATION & INTERACTIVE MAP ================= -->
+    <div class="mt-8 pt-6 border-t border-charcoal/10 space-y-4">
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="font-display font-bold text-lg text-mossdeep flex items-center gap-2">
+            <i data-lucide="map-pin" class="w-5 h-5 text-moss"></i>
+            Step 2: Automatic GPS Location Detection
+          </h2>
+          <p class="text-xs text-charcoal/60 mt-0.5">Captures coordinates via device Geolocation API. Move the pin to correct if needed.</p>
+        </div>
+        <button type="button" id="refreshGpsBtn" class="btn-ghost text-xs py-1.5 px-3 flex items-center gap-1.5 border border-moss/20 hover:bg-sprout/15" title="Re-query GPS sensor">
+          <i data-lucide="locate-fixed" class="w-3.5 h-3.5 text-moss"></i> Refresh Location
+        </button>
+      </div>
+
+      <!-- GPS Status Indicator Pill -->
+      <div id="gpsStatusPill" class="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-2xl bg-paperdim border border-mossdeep/15">
+        <div class="flex items-center gap-2.5">
+          <div id="gpsPulseRing" class="w-3 h-3 rounded-full bg-amber-500 animate-pulse"></div>
+          <div>
+            <p id="gpsStatusLabel" class="text-xs font-bold text-mossdeep">GPS Standby</p>
+            <p id="gpsCoordinatesLabel" class="text-[11px] font-mono text-charcoal/60">Latitude: -- · Longitude: --</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <span id="gpsAccuracyBadge" class="hidden text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-white text-mossdeep border border-moss/20">
+            ± -- m
+          </span>
+          <button type="button" id="detectGpsBtn" class="btn-primary text-xs py-1 px-3">
+            <i data-lucide="navigation" class="w-3 h-3"></i> Get GPS
+          </button>
+        </div>
+      </div>
+
+      <!-- GPS Error Notice -->
+      <div id="gpsErrorAlert" class="hidden p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-start gap-2.5">
+        <i data-lucide="alert-circle" class="w-4 h-4 text-amber-600 mt-0.5 shrink-0"></i>
+        <div>
+          <p class="font-bold" id="gpsErrorTitle">Location Permission Needed</p>
+          <p class="mt-0.5 text-amber-800/80" id="gpsErrorDesc">
+            GPS could not be acquired automatically. You can manually drag the pin on the map below or type your street address.
+          </p>
+        </div>
+      </div>
+
+      <!-- Interactive Leaflet Map -->
+      <div class="relative">
+        <div id="mapContainer"></div>
+        <div class="absolute bottom-2 left-2 z-20 bg-white/90 backdrop-blur px-2.5 py-1 rounded-lg text-[10px] font-semibold text-mossdeep shadow-sm border border-moss/20 pointer-events-none">
+          <i data-lucide="hand" class="inline w-3 h-3 text-moss mr-1"></i> Drag pin or click map to adjust exact point
+        </div>
+      </div>
+
+      <!-- Resolved Address Text Box -->
+      <div>
+        <label for="detectedAddress" class="block text-xs font-bold text-mossdeep mb-1">
+          Detected Street Address & Landmark
+        </label>
+        <div class="relative">
+          <input type="text" id="detectedAddress" placeholder="Detecting street address from coordinates..." class="w-full p-3 pl-9 rounded-xl bg-paperdim border border-mossdeep/20 text-xs font-semibold focus:outline-none focus:border-moss" required />
+          <i data-lucide="map-pin" class="w-4 h-4 text-moss absolute left-3 top-3.5 opacity-60"></i>
+        </div>
+        <p class="text-[10px] text-charcoal/50 mt-1">
+          Automatically reverse-geocoded via OpenStreetMap. You can add landmark details or gate numbers if helpful.
+        </p>
+      </div>
+    </div>
+
+    <!-- ================= SECTION 3: GARBAGE COMPLAINT DETAILS ================= -->
+    <div class="mt-8 pt-6 border-t border-charcoal/10 space-y-5">
+      <div>
+        <h2 class="font-display font-bold text-lg text-mossdeep flex items-center gap-2">
+          <i data-lucide="file-text" class="w-5 h-5 text-moss"></i>
+          Step 3: Garbage Problem Details
+        </h2>
+        <p class="text-xs text-charcoal/60 mt-0.5">Categorize the waste and specify severity for prioritized municipal dispatch.</p>
+      </div>
+
+      <form id="garbageComplaintForm" class="space-y-5" novalidate>
+        
+        <!-- Category & Ward Grid -->
+        <div class="grid sm:grid-cols-2 gap-4">
+          <div>
+            <label for="wasteCategorySelect" class="block text-xs font-bold text-mossdeep mb-1">
+              Garbage Category <span class="text-red-500">*</span>
+            </label>
+            <select id="wasteCategorySelect" class="w-full p-3 rounded-xl bg-paperdim border border-mossdeep/20 text-xs font-semibold focus:outline-none focus:border-moss" required>
+              <option value="" disabled selected>Select waste category</option>
+              <option value="Roadside Garbage">Roadside Garbage & Street Litter</option>
+              <option value="Overflowing Dustbin">Overflowing Dustbin / Public Bin</option>
+              <option value="Plastic Waste">Plastic Waste & Synthetic Packaging</option>
+              <option value="Construction Waste">Construction Waste & Debris (C&D)</option>
+              <option value="Drainage Waste">Drainage Waste & Clogged Stormwater Drain</option>
+              <option value="Illegal Dumping">Illegal Dumping / Open Vacant Plot</option>
+              <option value="Other">Other Hazardous / Unclassified Waste</option>
+            </select>
+            <p id="aiCategorySuggestionTag" class="text-[11px] text-emerald-700 font-semibold mt-1 hidden flex items-center gap-1">
+              <i data-lucide="check-circle" class="w-3 h-3"></i> Confirmed by Computer Vision
+            </p>
+          </div>
+
+          <div>
+            <label for="wardSelect" class="block text-xs font-bold text-mossdeep mb-1">
+              Municipal Ward <span class="text-red-500">*</span>
+            </label>
+            <select id="wardSelect" class="w-full p-3 rounded-xl bg-paperdim border border-mossdeep/20 text-xs font-semibold focus:outline-none focus:border-moss" required>
+              <option value="Ward 1">Ward 1 — MG Road / City Center</option>
+              <option value="Ward 2">Ward 2 — North Tech Park</option>
+              <option value="Ward 3">Ward 3 — Civic Center</option>
+              <option value="Ward 4">Ward 4 — Market District</option>
+              <option value="Ward 5">Ward 5 — Riverside Promenade</option>
+              <option value="Ward 6">Ward 6 — Highland Colony</option>
+              <option value="Ward 7" selected>Ward 7 — Lakeview Sector</option>
+              <option value="Ward 8">Ward 8 — Suburban South</option>
+              <option value="Ward 9">Ward 9 — Greenfield Park</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Severity Level Selection -->
+        <div>
+          <label class="block text-xs font-bold text-mossdeep mb-1.5">
+            Problem Severity <span class="text-red-500">*</span>
+          </label>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5" id="severityButtonGroup">
+            <button type="button" data-severity="Low" class="severity-btn p-2.5 rounded-xl border border-mossdeep/15 bg-paperdim text-left hover:border-moss transition flex items-center justify-between">
+              <div>
+                <p class="text-xs font-bold text-mossdeep">Low</p>
+                <p class="text-[10px] text-charcoal/50">Minor litter</p>
+              </div>
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+            </button>
+            <button type="button" data-severity="Medium" class="severity-btn is-active p-2.5 rounded-xl border-2 border-moss bg-sprout/15 text-left transition flex items-center justify-between">
+              <div>
+                <p class="text-xs font-bold text-mossdeep">Medium</p>
+                <p class="text-[10px] text-charcoal/50">Noticeable heap</p>
+              </div>
+              <span class="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
+            </button>
+            <button type="button" data-severity="High" class="severity-btn p-2.5 rounded-xl border border-mossdeep/15 bg-paperdim text-left hover:border-moss transition flex items-center justify-between">
+              <div>
+                <p class="text-xs font-bold text-mossdeep">High</p>
+                <p class="text-[10px] text-charcoal/50">Spilling / Odor</p>
+              </div>
+              <span class="w-2.5 h-2.5 rounded-full bg-orange-500"></span>
+            </button>
+            <button type="button" data-severity="Critical" class="severity-btn p-2.5 rounded-xl border border-mossdeep/15 bg-paperdim text-left hover:border-red-500 transition flex items-center justify-between">
+              <div>
+                <p class="text-xs font-bold text-red-700">Critical</p>
+                <p class="text-[10px] text-charcoal/50">Hazard / Block</p>
+              </div>
+              <span class="w-2.5 h-2.5 rounded-full bg-red-600 animate-ping"></span>
+            </button>
+          </div>
+          <input type="hidden" id="selectedSeverity" value="Medium" />
+        </div>
+
+        <!-- Description Textarea -->
+        <div>
+          <label for="problemDescription" class="block text-xs font-bold text-mossdeep mb-1">
+            Description of the Garbage Problem <span class="text-red-500">*</span>
+          </label>
+          <textarea id="problemDescription" rows="3" placeholder="Describe the garbage issue, estimated size, any road blockage, foul odors, or hazardous materials visible..." class="w-full p-3 rounded-xl bg-paperdim border border-mossdeep/20 text-xs font-semibold focus:outline-none focus:border-moss" required></textarea>
+          <div class="flex justify-between items-center text-[10px] text-charcoal/50 mt-1">
+            <span>Minimum 10 characters required</span>
+            <span id="charCount">0 characters</span>
+          </div>
+        </div>
+
+        <!-- Citizen Contact Details -->
+        <div class="grid sm:grid-cols-2 gap-4 pt-2">
+          <div>
+            <label for="citizenName" class="block text-xs font-bold text-mossdeep mb-1">
+              Your Name <span class="text-red-500">*</span>
+            </label>
+            <input type="text" id="citizenName" placeholder="Full name" class="w-full p-3 rounded-xl bg-paperdim border border-mossdeep/20 text-xs font-semibold focus:outline-none focus:border-moss" required />
+          </div>
+          <div>
+            <label for="citizenEmail" class="block text-xs font-bold text-mossdeep mb-1">
+              Email / Contact <span class="text-red-500">*</span>
+            </label>
+            <input type="email" id="citizenEmail" placeholder="you@example.com" class="w-full p-3 rounded-xl bg-paperdim border border-mossdeep/20 text-xs font-semibold focus:outline-none focus:border-moss" required />
+          </div>
+        </div>
+
+        <!-- Assigned Department Preview Box -->
+        <div class="p-3.5 rounded-2xl bg-paperdim/70 border border-mossdeep/15 flex items-center justify-between">
+          <div class="flex items-center gap-2.5">
+            <i data-lucide="building-2" class="w-4 h-4 text-moss"></i>
+            <div>
+              <p class="text-[10px] text-charcoal/50 uppercase font-mono font-bold tracking-wider">Designated Authority</p>
+              <p id="assignedDeptLabel" class="text-xs font-bold text-mossdeep">Solid Waste Management Department (SWMD)</p>
+            </div>
+          </div>
+          <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-moss/10 text-moss font-bold">Auto-Routed</span>
+        </div>
+
+        <!-- ================= SECTION 4: REVIEW & SUBMIT ================= -->
+        <div class="pt-4">
+          <button type="submit" id="submitComplaintBtn" class="btn-primary w-full py-4 rounded-xl text-sm font-bold shadow-lg flex items-center justify-center gap-2">
+            <i data-lucide="send" class="w-4 h-4"></i> Submit Complaint to Municipal Authority
+          </button>
+          <p class="text-[11px] text-charcoal/50 text-center mt-2">
+            By submitting, you verify that this report represents a real-world municipal waste problem. A unique tracking ID will be generated.
+          </p>
+        </div>
+
+      </form>
+    </div>
+
+  </div>
+</main>
+
+<!-- ================= SUCCESS CONFIRMATION MODAL ================= -->
+<div id="successModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-fadeIn">
+  <div class="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 border border-mossdeep/10 shadow-2xl relative text-center">
+    
+    <div class="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto mb-4">
+      <i data-lucide="check" class="w-8 h-8"></i>
+    </div>
+
+    <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-sprout/20 text-mossdeep text-xs font-bold mb-2">
+      <i data-lucide="shield-check" class="w-3.5 h-3.5 text-emerald-600"></i> Complaint Registered
+    </span>
+
+    <h3 class="font-display font-extrabold text-2xl text-mossdeep">Garbage Report Submitted!</h3>
+    <p class="text-xs text-charcoal/70 mt-1">Your geotagged complaint has been recorded in the GoGreen Municipal Registry.</p>
+
+    <!-- Complaint ID Badge with Copy Button -->
+    <div class="my-5 p-4 rounded-2xl bg-paperdim border border-mossdeep/15">
+      <p class="text-[10px] text-charcoal/50 uppercase font-mono font-bold tracking-wider">Unique Complaint ID</p>
+      <div class="flex items-center justify-center gap-2 mt-1">
+        <span id="modalComplaintId" class="font-mono font-extrabold text-lg text-mossdeep">GG-GRB-2026-0000</span>
+        <button type="button" id="copyIdBtn" class="p-1 rounded bg-white text-moss hover:bg-sprout/20 text-xs border border-charcoal/10" title="Copy to clipboard">
+          <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+        </button>
+      </div>
+      <p id="copyToast" class="text-[10px] text-emerald-600 font-bold mt-1 hidden">Copied to clipboard!</p>
+    </div>
+
+    <!-- Details Summary Grid -->
+    <div class="text-left space-y-2 text-xs py-2 border-y border-charcoal/10 my-4">
+      <div class="flex justify-between">
+        <span class="text-charcoal/50 font-semibold">Assigned Department:</span>
+        <span id="modalDept" class="font-bold text-mossdeep text-right">Solid Waste Management</span>
+      </div>
+      <div class="flex justify-between">
+        <span class="text-charcoal/50 font-semibold">Initial Status:</span>
+        <span id="modalStatus" class="font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded text-[11px]">Submitted to GoGreen</span>
+      </div>
+      <div class="flex justify-between">
+        <span class="text-charcoal/50 font-semibold">Location / Ward:</span>
+        <span id="modalLocation" class="font-bold text-mossdeep truncate max-w-[200px]">Ward 7</span>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="space-y-2 pt-2">
+      <a id="trackComplaintLink" href="track.html" class="btn-primary w-full py-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-md">
+        <i data-lucide="search" class="w-4 h-4"></i> Track This Complaint
+      </a>
+      <button type="button" id="reportAnotherBtn" class="btn-ghost w-full py-2.5 text-xs font-bold text-charcoal/70 hover:text-mossdeep">
+        Report Another Waste Issue
+      </button>
+    </div>
+
+  </div>
+</div>
+
+<!-- ================= FOOTER ================= -->
+<footer class="mt-12 py-6 border-t border-mossdeep/10 text-center text-xs text-charcoal/50">
+  <div class="max-w-4xl mx-auto px-4 flex flex-wrap items-center justify-between gap-4">
+    <p>© 2026 Go Green Smart Waste Platform · Municipal Public Cleanliness Initiative</p>
+    <div class="flex items-center gap-4">
+      <a href="index.html" class="hover:text-moss">Home</a>
+      <a href="track.html" class="hover:text-moss">Track Complaint</a>
+      <a href="dashboard.html" class="hover:text-moss">Citizen Dashboard</a>
+      <a href="admin.html" class="hover:text-moss">Municipal Admin</a>
+    </div>
+  </div>
+</footer>
+
+<!-- Interactive Controller Script -->
+<script>
+(() => {
+  // --- State Variables ---
+  let mediaStream = null;
+  let activeFacingMode = "environment"; // Rear camera by default on mobile
+  let capturedBlob = null;
+  let capturedDataUrl = null;
+  let map = null;
+  let mapMarker = null;
+  let currentCoordinates = { lat: 28.6139, lon: 77.2090, accuracy: null };
+  let currentSeverity = "Medium";
+  let isSubmitting = false;
+
+  // DOM Elements
+  const videoEl = document.getElementById('cameraVideo');
+  const cameraContainer = document.getElementById('cameraContainer');
+  const cameraPlaceholder = document.getElementById('cameraPlaceholder');
+  const cameraHud = document.getElementById('cameraHud');
+  const activeCameraControls = document.getElementById('activeCameraControls');
+  const capturedControls = document.getElementById('capturedControls');
+  const startCameraBtn = document.getElementById('startCameraBtn');
+  const captureBtn = document.getElementById('captureBtn');
+  const retakeBtn = document.getElementById('retakeBtn');
+  const flipCameraBtn = document.getElementById('flipCameraBtn');
+  const stopCameraBtn = document.getElementById('stopCameraBtn');
+  const fallbackFileInput = document.getElementById('fallbackFileInput');
+  const photoPreviewWrapper = document.getElementById('photoPreviewWrapper');
+  const capturedPhotoImg = document.getElementById('capturedPhotoImg');
+  const aiBoundingBoxLayer = document.getElementById('aiBoundingBoxLayer');
+  const scannerBeam = document.getElementById('scannerBeam');
+  const shutterFlash = document.getElementById('shutterFlash');
+  const cameraErrorAlert = document.getElementById('cameraErrorAlert');
+  const cameraErrorMsg = document.getElementById('cameraErrorMsg');
+  const retryCameraBtn = document.getElementById('retryCameraBtn');
+
+  // GPS Elements
+  const detectGpsBtn = document.getElementById('detectGpsBtn');
+  const refreshGpsBtn = document.getElementById('refreshGpsBtn');
+  const gpsStatusLabel = document.getElementById('gpsStatusLabel');
+  const gpsCoordinatesLabel = document.getElementById('gpsCoordinatesLabel');
+  const gpsAccuracyBadge = document.getElementById('gpsAccuracyBadge');
+  const gpsPulseRing = document.getElementById('gpsPulseRing');
+  const gpsErrorAlert = document.getElementById('gpsErrorAlert');
+  const detectedAddress = document.getElementById('detectedAddress');
+
+  // Form Elements
+  const garbageForm = document.getElementById('garbageComplaintForm');
+  const wasteCategorySelect = document.getElementById('wasteCategorySelect');
+  const wardSelect = document.getElementById('wardSelect');
+  const problemDescription = document.getElementById('problemDescription');
+  const citizenName = document.getElementById('citizenName');
+  const citizenEmail = document.getElementById('citizenEmail');
+  const assignedDeptLabel = document.getElementById('assignedDeptLabel');
+  const aiCategorySuggestionTag = document.getElementById('aiCategorySuggestionTag');
+  const aiDetectionStatus = document.getElementById('aiDetectionStatus');
+  const aiDetectionText = document.getElementById('aiDetectionText');
+  const submitComplaintBtn = document.getElementById('submitComplaintBtn');
+  const charCount = document.getElementById('charCount');
+
+  // Modal Elements
+  const successModal = document.getElementById('successModal');
+  const modalComplaintId = document.getElementById('modalComplaintId');
+  const modalDept = document.getElementById('modalDept');
+  const modalStatus = document.getElementById('modalStatus');
+  const modalLocation = document.getElementById('modalLocation');
+  const copyIdBtn = document.getElementById('copyIdBtn');
+  const copyToast = document.getElementById('copyToast');
+  const trackComplaintLink = document.getElementById('trackComplaintLink');
+  const reportAnotherBtn = document.getElementById('reportAnotherBtn');
+
+  // Department mapping lookup
+  const DEPT_MAP = {
+    "Roadside Garbage": "Solid Waste Management Department (SWMD)",
+    "Overflowing Dustbin": "City Sanitation & Public Cleansing Division",
+    "Plastic Waste": "Plastic Waste Recycling & Resource Recovery Directorate",
+    "Construction Waste": "Public Works Department (PWD) - Debris Control Cell",
+    "Drainage Waste": "Drainage & Sewerage Board (Urban Hydrology Division)",
+    "Illegal Dumping": "Municipal Vigilance & Environmental Enforcement Directorate",
+    "Other": "Municipal Grievance Redressal Cell"
+  };
+
+  // --- Initialize on load ---
+  document.addEventListener('DOMContentLoaded', () => {
+    lucide.createIcons();
+    initUserProfile();
+    initMap();
+    initSeveritySelector();
+    initCategoryListener();
+    initDescriptionCounter();
+
+    // Auto-detect GPS on page load to be immediately ready
+    requestGpsLocation();
+  });
+
+  function initUserProfile() {
+    const user = Session.getUser();
+    if (user) {
+      if (citizenName) citizenName.value = user.name || '';
+      if (citizenEmail) citizenEmail.value = user.email || '';
+      if (wardSelect && user.ward) wardSelect.value = user.ward;
+    }
+  }
+
+  function initDescriptionCounter() {
+    problemDescription.addEventListener('input', () => {
+      charCount.textContent = `${problemDescription.value.length} characters`;
+    });
+  }
+
+  function initCategoryListener() {
+    wasteCategorySelect.addEventListener('change', () => {
+      const selected = wasteCategorySelect.value;
+      if (DEPT_MAP[selected]) {
+        assignedDeptLabel.textContent = DEPT_MAP[selected];
+      }
+    });
+  }
+
+  function initSeveritySelector() {
+    const buttons = document.querySelectorAll('.severity-btn');
+    buttons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        buttons.forEach(b => {
+          b.classList.remove('is-active', 'border-2', 'border-moss', 'bg-sprout/15', 'border-red-500', 'bg-red-50');
+          b.classList.add('border-mossdeep/15', 'bg-paperdim');
+        });
+
+        btn.classList.add('is-active', 'border-2');
+        currentSeverity = btn.getAttribute('data-severity');
+        document.getElementById('selectedSeverity').value = currentSeverity;
+
+        if (currentSeverity === 'Critical') {
+          btn.classList.add('border-red-500', 'bg-red-50');
+        } else {
+          btn.classList.add('border-moss', 'bg-sprout/15');
+        }
+      });
+    });
+  }
+
+  // =========================================================================
+  // 1. LIVE CAMERA WORKFLOW
+  // =========================================================================
+  startCameraBtn.addEventListener('click', startLiveCamera);
+  retryCameraBtn.addEventListener('click', startLiveCamera);
+  stopCameraBtn.addEventListener('click', stopLiveCamera);
+  flipCameraBtn.addEventListener('click', toggleCameraLens);
+  captureBtn.addEventListener('click', captureSnapshot);
+  retakeBtn.addEventListener('click', retakePhoto);
+
+  fallbackFileInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      capturedDataUrl = evt.target.result;
+      capturedBlob = file;
+      displayCapturedPhoto(capturedDataUrl);
+      stopLiveCamera();
+      triggerAiWasteScan();
+    };
+    reader.readAsDataURL(file);
+  });
+
+  async function startLiveCamera() {
+    cameraErrorAlert.classList.add('hidden');
+    
+    // Stop any existing stream
+    if (mediaStream) {
+      stopLiveCamera();
+    }
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      showCameraError("Your browser or connection does not support HTML5 camera access (getUserMedia). Please upload a photo instead.");
+      return;
+    }
+
+    const constraints = {
+      video: {
+        facingMode: { ideal: activeFacingMode },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 }
+      },
+      audio: false
+    };
+
+    try {
+      mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+      videoEl.srcObject = mediaStream;
+      videoEl.classList.remove('hidden');
+      cameraPlaceholder.classList.add('hidden');
+      cameraHud.classList.remove('hidden');
+      photoPreviewWrapper.classList.add('hidden');
+      activeCameraControls.classList.remove('hidden');
+      capturedControls.classList.add('hidden');
+      lucide.createIcons();
+    } catch (err) {
+      console.warn("[Camera Error]", err);
+      let msg = "Could not activate camera. ";
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        msg += "Camera permission was denied. Please allow camera permissions in your browser address bar.";
+      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+        msg += "No camera found on this device. Please use the file upload option.";
+      } else {
+        msg += err.message || "An unexpected error occurred.";
+      }
+      showCameraError(msg);
+    }
+  }
+
+  function stopLiveCamera() {
+    if (mediaStream) {
+      mediaStream.getTracks().forEach(track => track.stop());
+      mediaStream = null;
+    }
+    videoEl.classList.add('hidden');
+    cameraHud.classList.add('hidden');
+    activeCameraControls.classList.add('hidden');
+  }
+
+  function toggleCameraLens() {
+    activeFacingMode = activeFacingMode === "environment" ? "user" : "environment";
+    startLiveCamera();
+  }
+
+  function showCameraError(message) {
+    cameraErrorMsg.textContent = message;
+    cameraErrorAlert.classList.remove('hidden');
+    cameraPlaceholder.classList.remove('hidden');
+    videoEl.classList.add('hidden');
+    cameraHud.classList.add('hidden');
+    activeCameraControls.classList.add('hidden');
+    lucide.createIcons();
+  }
+
+  function captureSnapshot() {
+    if (!videoEl || !mediaStream) return;
+
+    // Trigger visual shutter flash
+    shutterFlash.classList.add('shutter-flash');
+    setTimeout(() => shutterFlash.classList.remove('shutter-flash'), 250);
+
+    const canvas = document.getElementById('captureCanvas');
+    canvas.width = videoEl.videoWidth || 1280;
+    canvas.height = videoEl.videoHeight || 720;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+
+    capturedDataUrl = canvas.toDataURL('image/jpeg', 0.90);
+    canvas.toBlob((blob) => {
+      capturedBlob = blob;
+    }, 'image/jpeg', 0.90);
+
+    stopLiveCamera();
+    displayCapturedPhoto(capturedDataUrl);
+
+    // Trigger real-time computer vision waste detection
+    triggerAiWasteScan();
+
+    // Trigger GPS check
+    requestGpsLocation();
+  }
+
+  function displayCapturedPhoto(dataUrl) {
+    capturedPhotoImg.src = dataUrl;
+    photoPreviewWrapper.classList.remove('hidden');
+    cameraPlaceholder.classList.add('hidden');
+    capturedControls.classList.remove('hidden');
+    activeCameraControls.classList.add('hidden');
+    
+    // Update step 1 indicator
+    document.getElementById('stepIndicator1').classList.replace('text-moss', 'text-emerald-700');
+    document.getElementById('stepBar2').classList.replace('bg-charcoal/15', 'bg-moss');
+    document.getElementById('stepIndicator2').classList.replace('text-charcoal/40', 'text-moss');
+    lucide.createIcons();
+  }
+
+  function retakePhoto() {
+    capturedBlob = null;
+    capturedDataUrl = null;
+    aiBoundingBoxLayer.innerHTML = '';
+    aiDetectionStatus.classList.add('hidden');
+    photoPreviewWrapper.classList.add('hidden');
+    cameraPlaceholder.classList.remove('hidden');
+    capturedControls.classList.add('hidden');
+    startLiveCamera();
+  }
+
+  // =========================================================================
+  // 2. REAL COMPUTER VISION SCANNER INTEGRATION
+  // =========================================================================
+  async function triggerAiWasteScan() {
+    if (!capturedDataUrl) return;
+
+    aiDetectionStatus.classList.remove('hidden', 'bg-red-50', 'text-red-700');
+    aiDetectionStatus.classList.add('bg-sprout/20', 'text-mossdeep');
+    aiDetectionText.textContent = "Computer Vision analyzing waste features...";
+    scannerBeam.classList.remove('hidden');
+    aiBoundingBoxLayer.innerHTML = '';
+
+    try {
+      const result = await Session.analyzeWasteImage({ imageBase64: capturedDataUrl });
+      scannerBeam.classList.add('hidden');
+
+      if (result.success && result.detected) {
+        aiDetectionText.textContent = `AI: ${result.suggestedCategory} (${Math.round(result.confidence * 100)}% confidence)`;
+        
+        // Auto-select category if not manually altered
+        if (result.suggestedCategory && DEPT_MAP[result.suggestedCategory]) {
+          wasteCategorySelect.value = result.suggestedCategory;
+          assignedDeptLabel.textContent = DEPT_MAP[result.suggestedCategory];
+          aiCategorySuggestionTag.classList.remove('hidden');
+        }
+
+        // Auto-suggest severity if high or critical
+        if (result.severitySuggestion && result.severitySuggestion !== 'Medium') {
+          const matchingBtn = document.querySelector(`.severity-btn[data-severity="${result.severitySuggestion}"]`);
+          if (matchingBtn) matchingBtn.click();
+        }
+
+        // Render detected bounding boxes
+        renderBoundingBoxes(result.boundingBoxes || []);
+      } else {
+        aiDetectionText.textContent = "Photo accepted. Select category below.";
+      }
+    } catch (err) {
+      console.warn("[AI Vision Note]", err);
+      scannerBeam.classList.add('hidden');
+      aiDetectionText.textContent = "Visual check completed. Please review details below.";
+    }
+  }
+
+  function renderBoundingBoxes(boxes) {
+    aiBoundingBoxLayer.innerHTML = '';
+    boxes.forEach(box => {
+      const boxDiv = document.createElement('div');
+      boxDiv.className = 'bbox-overlay';
+      boxDiv.style.left = `${box.x * 100}%`;
+      boxDiv.style.top = `${box.y * 100}%`;
+      boxDiv.style.width = `${box.width * 100}%`;
+      boxDiv.style.height = `${box.height * 100}%`;
+
+      const label = document.createElement('span');
+      label.className = 'bbox-label';
+      label.textContent = `${box.label || 'Litter'} (${Math.round((box.confidence || 0.8) * 100)}%)`;
+      boxDiv.appendChild(label);
+
+      aiBoundingBoxLayer.appendChild(boxDiv);
+    });
+  }
+
+  // =========================================================================
+  // 3. AUTOMATIC GPS & LEAFLET MAP WORKFLOW
+  // =========================================================================
+  detectGpsBtn.addEventListener('click', requestGpsLocation);
+  refreshGpsBtn.addEventListener('click', requestGpsLocation);
+
+  function initMap() {
+    const defaultLat = 28.6139;
+    const defaultLon = 77.2090;
+
+    map = L.map('mapContainer', {
+      zoomControl: true,
+      scrollWheelZoom: false
+    }).setView([defaultLat, defaultLon], 14);
+
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+
+    // Custom emerald map pin
+    const pinIcon = L.divIcon({
+      className: 'custom-pin',
+      html: `
+        <div style="background:#2F5D42; color:#8FBF6D; width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; box-shadow:0 4px 15px rgba(0,0,0,0.3); border:2px solid white;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+        </div>
+      `,
+      iconSize: [34, 34],
+      iconAnchor: [17, 34]
+    });
+
+    mapMarker = L.marker([defaultLat, defaultLon], {
+      icon: pinIcon,
+      draggable: true
+    }).addTo(map);
+
+    // Drag pin event
+    mapMarker.on('dragend', (e) => {
+      const pos = e.target.getLatLng();
+      updateCoordinates(pos.lat, pos.lng, null, "Manual pin reposition");
+      reverseGeocode(pos.lat, pos.lng);
+    });
+
+    // Map click event
+    map.on('click', (e) => {
+      mapMarker.setLatLng(e.latlng);
+      updateCoordinates(e.latlng.lat, e.latlng.lng, null, "Manual pin placement");
+      reverseGeocode(e.latlng.lat, e.latlng.lng);
+    });
+  }
+
+  function requestGpsLocation() {
+    gpsErrorAlert.classList.add('hidden');
+    gpsStatusLabel.textContent = "Acquiring satellite signal...";
+    gpsPulseRing.className = "w-3 h-3 rounded-full bg-amber-500 animate-ping";
+
+    if (!navigator.geolocation) {
+      showGpsError("Geolocation is not supported by your browser. Please position the map pin manually.");
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude, accuracy } = position.coords;
+        updateCoordinates(latitude, longitude, accuracy, "High-Precision GPS Lock");
+        
+        if (map && mapMarker) {
+          map.setView([latitude, longitude], 16);
+          mapMarker.setLatLng([latitude, longitude]);
+        }
+
+        reverseGeocode(latitude, longitude);
+
+        // Advance progress indicator
+        document.getElementById('stepBar3').classList.replace('bg-charcoal/15', 'bg-moss');
+        document.getElementById('stepIndicator3').classList.replace('text-charcoal/40', 'text-moss');
+      },
+      (error) => {
+        console.warn("[GPS Error]", error);
+        let msg = "Could not automatically obtain GPS coordinates. ";
+        if (error.code === error.PERMISSION_DENIED) {
+          msg += "Permission was denied. Please allow location permissions or drag the marker to your location.";
+        } else if (error.code === error.POSITION_UNAVAILABLE) {
+          msg += "Location information is unavailable. Drag the map marker to set your address.";
+        } else if (error.code === error.TIMEOUT) {
+          msg += "GPS request timed out. You can click 'Refresh Location' or move the pin manually.";
+        }
+        showGpsError(msg);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0
+      }
+    );
+  }
+
+  function updateCoordinates(lat, lon, accuracy, statusText) {
+    currentCoordinates.lat = lat;
+    currentCoordinates.lon = lon;
+    currentCoordinates.accuracy = accuracy;
+
+    gpsStatusLabel.textContent = statusText || "Location Locked";
+    gpsCoordinatesLabel.textContent = `Lat: ${lat.toFixed(6)} · Lon: ${lon.toFixed(6)}`;
+    gpsPulseRing.className = "w-3 h-3 rounded-full bg-emerald-500";
+
+    if (accuracy) {
+      gpsAccuracyBadge.classList.remove('hidden');
+      gpsAccuracyBadge.textContent = `± ${Math.round(accuracy)} m`;
+    }
+  }
+
+  function showGpsError(message) {
+    gpsStatusLabel.textContent = "GPS Unavailable";
+    gpsPulseRing.className = "w-3 h-3 rounded-full bg-red-500";
+    document.getElementById('gpsErrorDesc').textContent = message;
+    gpsErrorAlert.classList.remove('hidden');
+    lucide.createIcons();
+  }
+
+  async function reverseGeocode(lat, lon) {
+    try {
+      detectedAddress.placeholder = "Resolving street address...";
+      const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`;
+      const res = await fetch(url, { headers: { 'Accept-Language': 'en' } });
+      const data = await res.json();
+
+      if (data && data.display_name) {
+        detectedAddress.value = data.display_name;
+        
+        // Auto-detect ward if mentioned
+        const match = data.display_name.match(/ward\s*(\d+)/i);
+        if (match && wardSelect) {
+          wardSelect.value = `Ward ${match[1]}`;
+        }
+      } else {
+        detectedAddress.value = `Location near ${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+      }
+    } catch (e) {
+      detectedAddress.value = `Location coordinates: ${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+    }
+  }
+
+  // =========================================================================
+  // 4. SUBMIT COMPLAINT TO MUNICIPAL AUTHORITY
+  // =========================================================================
+  garbageForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    if (isSubmitting) return;
+
+    // Validation
+    if (!capturedDataUrl && !fallbackFileInput.files[0]) {
+      alert("Please capture or upload a garbage photograph first (Step 1).");
+      window.scrollTo({ top: 150, behavior: 'smooth' });
+      return;
+    }
+
+    const desc = problemDescription.value.trim();
+    if (desc.length < 10) {
+      alert("Please provide a detailed description of the problem (at least 10 characters).");
+      problemDescription.focus();
+      return;
+    }
+
+    const category = wasteCategorySelect.value;
+    if (!category) {
+      alert("Please select a waste category.");
+      wasteCategorySelect.focus();
+      return;
+    }
+
+    const name = citizenName.value.trim();
+    const email = citizenEmail.value.trim();
+    if (!name || !email) {
+      alert("Please provide your name and email contact.");
+      citizenName.focus();
+      return;
+    }
+
+    const address = detectedAddress.value.trim() || `Lat: ${currentCoordinates.lat}, Lon: ${currentCoordinates.lon}`;
+    const ward = wardSelect.value;
+
+    // Build payload
+    const payload = {
+      name,
+      email,
+      wasteCategory: category,
+      description: desc,
+      severity: currentSeverity,
+      ward: ward,
+      address: address,
+      location: address,
+      latitude: currentCoordinates.lat,
+      longitude: currentCoordinates.lon,
+      locationAccuracy: currentCoordinates.accuracy,
+      imageBase64: capturedDataUrl
+    };
+
+    // Lock UI and show submission state
+    isSubmitting = true;
+    submitComplaintBtn.disabled = true;
+    submitComplaintBtn.innerHTML = `
+      <span class="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin mr-2"></span>
+      Transmitting to Municipal Registry...
+    `;
+
+    try {
+      let response;
+      if (fallbackFileInput.files[0] && !capturedDataUrl) {
+        const formData = new FormData();
+        Object.entries(payload).forEach(([k, v]) => {
+          if (v !== null && v !== undefined && k !== 'imageBase64') formData.append(k, v);
+        });
+        formData.append('image', fallbackFileInput.files[0]);
+        response = await Session.submitGarbageReport(formData);
+      } else {
+        response = await Session.submitGarbageReport(payload);
+      }
+
+      showSuccessConfirmation(response);
+    } catch (err) {
+      console.error("[Submission Error]", err);
+      alert(`Submission failed: ${err.message || 'Please check your connection and try again.'}`);
+    } finally {
+      isSubmitting = false;
+      submitComplaintBtn.disabled = false;
+      submitComplaintBtn.innerHTML = `
+        <i data-lucide="send" class="w-4 h-4"></i> Submit Complaint to Municipal Authority
+      `;
+      lucide.createIcons();
+    }
+  });
+
+  // =========================================================================
+  // 5. SUCCESS CONFIRMATION MODAL & ACTIONS
+  // =========================================================================
+  function showSuccessConfirmation(res) {
+    const report = res.report || {};
+    const cid = res.complaintId || report.complaintId || `GG-GRB-2026-${report.id || 'NEW'}`;
+
+    modalComplaintId.textContent = cid;
+    modalDept.textContent = report.assignedDepartment || "Solid Waste Management (SWMD)";
+    modalStatus.textContent = report.status || "Submitted to GoGreen";
+    modalLocation.textContent = `${report.ward || 'Ward 7'} (${report.address ? report.address.slice(0, 32) + '...' : 'Location logged'})`;
+
+    trackComplaintLink.href = `track.html?id=${encodeURIComponent(cid)}`;
+    successModal.classList.remove('hidden');
+    lucide.createIcons();
+  }
+
+  copyIdBtn.addEventListener('click', () => {
+    const cid = modalComplaintId.textContent;
+    navigator.clipboard.writeText(cid).then(() => {
+      copyToast.classList.remove('hidden');
+      setTimeout(() => copyToast.classList.add('hidden'), 2000);
+    });
+  });
+
+  reportAnotherBtn.addEventListener('click', () => {
+    successModal.classList.add('hidden');
+    garbageForm.reset();
+    retakePhoto();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+
+})();
+</script>
+</body>
+</html>

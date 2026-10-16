@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Complaint Tracking Dashboard — Go Green</title>
+<meta name="description" content="Track your submitted garbage reports in real time with GPS location maps, municipal dispatch status, and before-and-after cleanup verification." />
+
+<!-- Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          ink: '#101C16',
+          inksoft: '#182922',
+          paper: '#F4F1E6',
+          paperdim: '#EAE6D6',
+          moss: '#2F5D42',
+          mossdeep: '#1F4130',
+          sprout: '#8FBF6D',
+          sproutlight: '#C7E3AE',
+          clay: '#B8703A',
+          claylight: '#E7B98A',
+          charcoal: '#1C2620',
+          sand: '#C9C2A6',
+        },
+        fontFamily: {
+          display: ['Manrope', 'sans-serif'],
+          body: ['Inter', 'sans-serif'],
+          mono: ['JetBrains Mono', 'monospace'],
+        },
+        borderRadius: {
+          xl2: '1.25rem',
+        },
+        boxShadow: {
+          soft: '0 20px 50px -20px rgba(16, 28, 22, 0.25)',
+          card: '0 10px 30px -12px rgba(16, 28, 22, 0.15)',
+        }
+      }
+    }
+  }
+</script>
+
+<!-- Lucide Icons -->
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+
+<!-- Leaflet Map CSS & JS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+<link rel="stylesheet" href="style.css" />
+<script src="session.js"></script>
+
+<style>
+  #trackingMap {
+    height: 250px;
+    width: 100%;
+    border-radius: 1rem;
+    z-index: 10;
+  }
+  .status-step.is-active .step-dot {
+    background: #2F5D42;
+    color: #8FBF6D;
+    box-shadow: 0 0 0 4px rgba(143, 191, 109, 0.35);
+  }
+  .status-step.is-done .step-dot {
+    background: #8FBF6D;
+    color: #101C16;
+  }
+</style>
+</head>
+<body class="bg-paper text-charcoal font-body antialiased min-h-screen flex flex-col">
+
+<!-- Background Sensor Backdrop -->
+<div class="sensor-grid" aria-hidden="true"></div>
+
+<!-- ================= TOP APP BAR ================= -->
+<header class="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-mossdeep/10 shadow-xs">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6">
+    <div class="flex items-center justify-between h-16">
+      
+      <!-- Brand Logo -->
+      <a href="index.html" class="flex items-center gap-2.5 group">
+        <span class="relative flex h-8 w-8 items-center justify-center rounded-full bg-mossdeep text-sprout">
+          <i data-lucide="recycle" class="w-4 h-4"></i>
+          <span class="pulse-ring"></span>
+        </span>
+        <span class="font-display font-extrabold text-base tracking-tight text-mossdeep">Go Green</span>
+      </a>
+
+      <!-- Quick Nav Links -->
+      <div class="flex items-center gap-3">
+        <a href="report.html" class="btn-primary text-xs py-1.5 px-3.5 flex items-center gap-1.5 shadow-sm">
+          <i data-lucide="camera" class="w-3.5 h-3.5"></i> Report Garbage
+        </a>
+        <a href="dashboard.html" class="btn-ghost text-xs py-1.5 px-3 flex items-center gap-1.5">
+          <i data-lucide="layout-dashboard" class="w-3.5 h-3.5 text-moss"></i> Dashboard
+        </a>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ================= MAIN CONTAINER ================= -->
+<main class="max-w-4xl mx-auto px-4 sm:px-6 py-8 w-full flex-1">
+
+  <!-- Header Section -->
+  <div class="text-center max-w-xl mx-auto mb-8">
+    <div class="eyebrow mx-auto mb-2"><span class="dot"></span> Live Municipal Redressal Tracker</div>
+    <h1 class="font-display font-extrabold text-3xl sm:text-4xl text-mossdeep tracking-tight">
+      Complaint Tracking Dashboard
+    </h1>
+    <p class="text-xs sm:text-sm text-charcoal/70 mt-2">
+      Enter your unique Complaint ID to monitor real-time cleanup progress, assigned departments, and verified resolution photos.
+    </p>
+
+    <!-- Search Input Bar -->
+    <form id="trackSearchForm" class="mt-6 flex gap-2">
+      <div class="relative flex-1">
+        <input type="text" id="trackInput" placeholder="Enter Complaint ID (e.g. GG-GRB-2026-0001)..." class="w-full p-3.5 pl-10 rounded-2xl bg-white border border-mossdeep/20 text-xs sm:text-sm font-semibold focus:outline-none focus:border-moss shadow-sm font-mono" required />
+        <i data-lucide="search" class="w-4 h-4 text-moss absolute left-3.5 top-4 opacity-60"></i>
+      </div>
+      <button type="submit" id="trackBtn" class="btn-primary px-6 rounded-2xl text-xs sm:text-sm font-bold shadow-md flex items-center gap-2 shrink-0">
+        <i data-lucide="navigation" class="w-4 h-4"></i> Track
+      </button>
+    </form>
+  </div>
+
+  <!-- Loading State -->
+  <div id="loadingIndicator" class="hidden text-center py-12">
+    <div class="w-10 h-10 border-3 border-moss border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+    <p class="text-xs font-bold text-mossdeep">Querying Municipal Complaint Registry...</p>
+  </div>
+
+  <!-- Not Found Alert -->
+  <div id="notFoundAlert" class="hidden max-w-lg mx-auto p-5 rounded-2xl bg-amber-50 border border-amber-200 text-center text-xs text-amber-900 space-y-2">
+    <i data-lucide="help-circle" class="w-8 h-8 text-amber-600 mx-auto"></i>
+    <p class="font-bold text-sm">Complaint Not Found</p>
+    <p class="text-amber-800/80" id="notFoundMsg">
+      No complaint matching that ID was found in the database. Please verify the ID or check your recent reports list.
+    </p>
+  </div>
+
+  <!-- ================= COMPLAINT DETAILS VIEW ================= -->
+  <div id="complaintDetailsCard" class="hidden space-y-6">
+
+    <!-- Top Card: Summary & Badges -->
+    <div class="bg-white rounded-3xl p-6 sm:p-8 border border-mossdeep/10 shadow-soft space-y-6">
+      
+      <!-- Top Meta Bar -->
+      <div class="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-charcoal/10">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="text-[10px] font-mono uppercase tracking-wider text-charcoal/50 font-bold">Complaint ID</span>
+            <span id="detailComplaintId" class="font-mono font-extrabold text-base sm:text-lg text-mossdeep">GG-GRB-2026-0000</span>
+          </div>
+          <p id="detailSubmissionDate" class="text-[11px] text-charcoal/50 mt-0.5">Submitted on --</p>
+        </div>
+
+        <div class="flex items-center gap-2 flex-wrap">
+          <span id="detailSeverityBadge" class="text-xs font-bold px-3 py-1 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
+            Medium Severity
+          </span>
+          <span id="detailStatusBadge" class="text-xs font-bold px-3.5 py-1 rounded-full bg-sprout/20 text-mossdeep border border-moss/20 flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span id="detailStatusText">Submitted to GoGreen</span>
+          </span>
+        </div>
+      </div>
+
+      <!-- Live Status Progress Stepper -->
+      <div>
+        <p class="text-xs font-bold text-mossdeep mb-3">Redressal Milestone Progress</p>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center" id="stepperContainer">
+          
+          <div class="status-step p-3 rounded-2xl bg-paperdim border border-moss/20" id="stepNode1">
+            <div class="step-dot w-7 h-7 rounded-full bg-moss text-sprout mx-auto flex items-center justify-center text-xs font-bold mb-1.5 shadow-sm">
+              <i data-lucide="check" class="w-3.5 h-3.5"></i>
+            </div>
+            <p class="text-xs font-bold text-mossdeep leading-tight">1. Submitted</p>
+            <p class="text-[10px] text-charcoal/50 mt-0.5">Logged in GoGreen</p>
+          </div>
+
+          <div class="status-step p-3 rounded-2xl bg-paperdim/50 border border-charcoal/10 opacity-70" id="stepNode2">
+            <div class="step-dot w-7 h-7 rounded-full bg-charcoal/20 text-charcoal/60 mx-auto flex items-center justify-center text-xs font-bold mb-1.5">
+              2
+            </div>
+            <p class="text-xs font-bold text-mossdeep leading-tight">2. Forwarded</p>
+            <p class="text-[10px] text-charcoal/50 mt-0.5">Municipal Authority</p>
+          </div>
+
+          <div class="status-step p-3 rounded-2xl bg-paperdim/50 border border-charcoal/10 opacity-70" id="stepNode3">
+            <div class="step-dot w-7 h-7 rounded-full bg-charcoal/20 text-charcoal/60 mx-auto flex items-center justify-center text-xs font-bold mb-1.5">
+              3
+            </div>
+            <p class="text-xs font-bold text-mossdeep leading-tight">3. In Progress</p>
+            <p class="text-[10px] text-charcoal/50 mt-0.5">Cleanup Crew On-site</p>
+          </div>
+
+          <div class="status-step p-3 rounded-2xl bg-paperdim/50 border border-charcoal/10 opacity-70" id="stepNode4">
+            <div class="step-dot w-7 h-7 rounded-full bg-charcoal/20 text-charcoal/60 mx-auto flex items-center justify-center text-xs font-bold mb-1.5">
+              4
+            </div>
+            <p class="text-xs font-bold text-mossdeep leading-tight">4. Resolved</p>
+            <p class="text-[10px] text-charcoal/50 mt-0.5">Verified Clean</p>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Municipal Routing & Assigned Team Meta -->
+      <div class="grid sm:grid-cols-3 gap-3 p-4 rounded-2xl bg-paperdim border border-mossdeep/15">
+        <div>
+          <p class="text-[10px] text-charcoal/50 uppercase font-mono font-bold tracking-wider">Assigned Department</p>
+          <p id="detailDept" class="text-xs font-bold text-mossdeep mt-0.5">Solid Waste Management (SWMD)</p>
+        </div>
+        <div>
+          <p class="text-[10px] text-charcoal/50 uppercase font-mono font-bold tracking-wider">Designated Cleanup Team</p>
+          <p id="detailTeam" class="text-xs font-bold text-mossdeep mt-0.5">Rapid Response Team Alpha</p>
+        </div>
+        <div>
+          <p class="text-[10px] text-charcoal/50 uppercase font-mono font-bold tracking-wider">Official Reference ID</p>
+          <p id="detailOfficialRef" class="text-xs font-mono font-bold text-clay mt-0.5">Pending Dispatch</p>
+        </div>
+      </div>
+
+      <!-- Problem Description Text -->
+      <div>
+        <h4 class="text-xs font-bold text-mossdeep mb-1">Citizen Problem Description</h4>
+        <div class="p-3.5 rounded-2xl bg-paperdim/50 border border-mossdeep/10 text-xs text-charcoal/80 leading-relaxed" id="detailDesc">
+          --
+        </div>
+      </div>
+
+      <!-- ================= BEFORE & AFTER PHOTO SECTION ================= -->
+      <div>
+        <h4 class="text-xs font-bold text-mossdeep mb-2 flex items-center gap-1.5">
+          <i data-lucide="image" class="w-4 h-4 text-moss"></i> Photographic Evidence & Cleanup Verification
+        </h4>
+
+        <div class="grid sm:grid-cols-2 gap-4" id="photosGrid">
+          
+          <!-- Reported Garbage Photo (Before) -->
+          <div class="space-y-1.5">
+            <div class="flex items-center justify-between text-xs">
+              <span class="font-bold text-mossdeep flex items-center gap-1.5">
+                <span class="w-2 h-2 rounded-full bg-red-500"></span> Reported Garbage (Before)
+              </span>
+              <span id="detailCategoryBadge" class="text-[10px] font-bold px-2 py-0.5 rounded bg-moss/10 text-moss">
+                Plastic Waste
+              </span>
+            </div>
+            <div class="aspect-4/3 rounded-2xl overflow-hidden bg-black/10 border border-mossdeep/15 relative group">
+              <img id="detailReportPhoto" src="" alt="Reported Garbage" class="w-full h-full object-cover transition group-hover:scale-105 duration-300" />
+            </div>
+          </div>
+
+          <!-- Verified Resolution Photo (After) -->
+          <div class="space-y-1.5" id="resolutionPhotoBox">
+            <div class="flex items-center justify-between text-xs">
+              <span class="font-bold text-mossdeep flex items-center gap-1.5">
+                <span class="w-2 h-2 rounded-full bg-emerald-500"></span> Verified Clean Site (After)
+              </span>
+              <span class="text-[10px] font-mono text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded" id="resolutionBadge">
+                Cleanup Verified
+              </span>
+            </div>
+            <div class="aspect-4/3 rounded-2xl overflow-hidden bg-paperdim border border-mossdeep/15 flex items-center justify-center text-center p-4 relative group" id="resPhotoInner">
+              <img id="detailResolutionPhoto" src="" alt="Verified Clean" class="hidden w-full h-full object-cover transition group-hover:scale-105 duration-300" />
+              <div id="noResPhotoPlaceholder" class="text-charcoal/50 text-xs">
+                <i data-lucide="clock" class="w-8 h-8 mx-auto mb-1 text-moss opacity-50"></i>
+                <p class="font-semibold">Cleanup verification in progress</p>
+                <p class="text-[10px] mt-0.5">Municipal crew will upload a photo upon resolving this complaint.</p>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Resolution Notes if resolved -->
+        <div id="resolutionNotesBox" class="hidden mt-3 p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-950">
+          <p class="font-bold flex items-center gap-1 text-emerald-800">
+            <i data-lucide="check-circle" class="w-3.5 h-3.5"></i> Supervisor Resolution Notes
+          </p>
+          <p class="mt-1 text-emerald-900/80" id="detailResolutionNotes">--</p>
+        </div>
+      </div>
+
+      <!-- ================= INTERACTIVE GPS LOCATION MAP ================= -->
+      <div>
+        <div class="flex items-center justify-between mb-2">
+          <h4 class="text-xs font-bold text-mossdeep flex items-center gap-1.5">
+            <i data-lucide="map-pin" class="w-4 h-4 text-moss"></i> Geotagged Location on City Map
+          </h4>
+          <span id="detailWardBadge" class="text-[11px] font-mono font-bold text-moss bg-moss/10 px-2 py-0.5 rounded">
+            Ward 7
+          </span>
+        </div>
+
+        <div id="trackingMap"></div>
+
+        <div class="flex items-center justify-between text-xs text-charcoal/60 mt-2 px-1">
+          <p id="detailAddress" class="truncate font-semibold max-w-sm sm:max-w-md">--</p>
+          <p id="detailCoords" class="font-mono text-[10px] shrink-0">--</p>
+        </div>
+      </div>
+
+      <!-- ================= STATUS AUDIT TIMELINE ================= -->
+      <div class="pt-4 border-t border-charcoal/10">
+        <h4 class="text-xs font-bold text-mossdeep mb-3 flex items-center gap-1.5">
+          <i data-lucide="history" class="w-4 h-4 text-moss"></i> Status History & Redressal Audit Trail
+        </h4>
+
+        <div id="statusTimeline" class="space-y-3 relative pl-6 before:content-[''] before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-moss/20">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ================= LOGGED-IN USER RECENT COMPLAINTS ================= -->
+  <div id="myComplaintsSection" class="mt-12 space-y-4">
+    <div class="flex items-center justify-between">
+      <div>
+        <h3 class="font-display font-bold text-lg text-mossdeep">Recent Complaints Filed</h3>
+        <p class="text-xs text-charcoal/60">Click any complaint below to track its live redressal status.</p>
+      </div>
+      <a href="report.html" class="btn-outline text-xs py-1.5 px-3 flex items-center gap-1">
+        <i data-lucide="plus" class="w-3.5 h-3.5"></i> Report New
+      </a>
+    </div>
+
+    <div id="recentComplaintsGrid" class="grid sm:grid-cols-2 gap-3">
+      <!-- Populated by JS -->
+    </div>
+  </div>
+
+</main>
+
+<!-- ================= FOOTER ================= -->
+<footer class="mt-12 py-6 border-t border-mossdeep/10 text-center text-xs text-charcoal/50">
+  <div class="max-w-4xl mx-auto px-4 flex flex-wrap items-center justify-between gap-4">
+    <p>© 2026 Go Green Smart Waste Platform · Municipal Public Cleanliness Initiative</p>
+    <div class="flex items-center gap-4">
+      <a href="index.html" class="hover:text-moss">Home</a>
+      <a href="report.html" class="hover:text-moss">Report Garbage</a>
+      <a href="dashboard.html" class="hover:text-moss">Citizen Dashboard</a>
+      <a href="admin.html" class="hover:text-moss">Municipal Admin</a>
+    </div>
+  </div>
+</footer>
+
+<!-- Interactive Tracking Controller Script -->
+<script>
+(() => {
+  let trackingMap = null;
+  let trackingMarker = null;
+
+  const trackSearchForm = document.getElementById('trackSearchForm');
+  const trackInput = document.getElementById('trackInput');
+  const trackBtn = document.getElementById('trackBtn');
+  const loadingIndicator = document.getElementById('loadingIndicator');
+  const notFoundAlert = document.getElementById('notFoundAlert');
+  const notFoundMsg = document.getElementById('notFoundMsg');
+  const complaintDetailsCard = document.getElementById('complaintDetailsCard');
+  const recentComplaintsGrid = document.getElementById('recentComplaintsGrid');
+
+  // Fields in Card
+  const detailComplaintId = document.getElementById('detailComplaintId');
+  const detailSubmissionDate = document.getElementById('detailSubmissionDate');
+  const detailSeverityBadge = document.getElementById('detailSeverityBadge');
+  const detailStatusBadge = document.getElementById('detailStatusBadge');
+  const detailStatusText = document.getElementById('detailStatusText');
+  const detailDept = document.getElementById('detailDept');
+  const detailTeam = document.getElementById('detailTeam');
+  const detailOfficialRef = document.getElementById('detailOfficialRef');
+  const detailDesc = document.getElementById('detailDesc');
+  const detailCategoryBadge = document.getElementById('detailCategoryBadge');
+  const detailWardBadge = document.getElementById('detailWardBadge');
+  const detailReportPhoto = document.getElementById('detailReportPhoto');
+  const detailResolutionPhoto = document.getElementById('detailResolutionPhoto');
+  const noResPhotoPlaceholder = document.getElementById('noResPhotoPlaceholder');
+  const resolutionNotesBox = document.getElementById('resolutionNotesBox');
+  const detailResolutionNotes = document.getElementById('detailResolutionNotes');
+  const detailAddress = document.getElementById('detailAddress');
+  const detailCoords = document.getElementById('detailCoords');
+  const statusTimeline = document.getElementById('statusTimeline');
+
+  document.addEventListener('DOMContentLoaded', () => {
+    lucide.createIcons();
+    initMap();
+    loadRecentComplaints();
+
+    // Check query params for id (e.g. ?id=GG-GRB-2026-0001)
+    const urlParams = new URLSearchParams(window.location.search);
+    const idParam = urlParams.get('id');
+    if (idParam) {
+      trackInput.value = idParam;
+      fetchComplaintDetails(idParam);
+    }
+  });
+
+  trackSearchForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const query = trackInput.value.trim();
+    if (query) {
+      // Update browser URL query param without reload
+      const newUrl = `${window.location.pathname}?id=${encodeURIComponent(query)}`;
+      window.history.pushState({ path: newUrl }, '', newUrl);
+      fetchComplaintDetails(query);
+    }
+  });
+
+  function initMap() {
+    trackingMap = L.map('trackingMap', {
+      zoomControl: true,
+      scrollWheelZoom: false
+    }).setView([28.6139, 77.2090], 15);
+
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '© OpenStreetMap contributors'
+    }).addTo(trackingMap);
+
+    const pinIcon = L.divIcon({
+      className: 'custom-pin',
+      html: `
+        <div style="background:#2F5D42; color:#8FBF6D; width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; box-shadow:0 4px 15px rgba(0,0,0,0.3); border:2px solid white;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+        </div>
+      `,
+      iconSize: [34, 34],
+      iconAnchor: [17, 34]
+    });
+
+    trackingMarker = L.marker([28.6139, 77.2090], { icon: pinIcon }).addTo(trackingMap);
+  }
+
+  async function fetchComplaintDetails(identifier) {
+    loadingIndicator.classList.remove('hidden');
+    notFoundAlert.classList.add('hidden');
+    complaintDetailsCard.classList.add('hidden');
+
+    try {
+      const data = await Session.getComplaint(identifier);
+      loadingIndicator.classList.add('hidden');
+
+      if (data.report) {
+        renderComplaint(data.report);
+      } else {
+        showNotFound(`No complaint found with identifier '${identifier}'.`);
+      }
+    } catch (err) {
+      loadingIndicator.classList.add('hidden');
+      showNotFound(`Complaint '${identifier}' was not found in the GoGreen Municipal Registry.`);
+    }
+  }
+
+  function renderComplaint(r) {
+    detailComplaintId.textContent = r.complaintId || `GG-GRB-2026-${r.id}`;
+    detailSubmissionDate.textContent = `Reported on ${formatDate(r.createdAt)} · By ${r.name || 'Citizen'}`;
+    detailDesc.textContent = r.description || 'No description provided.';
+    detailDept.textContent = r.assignedDepartment || 'Solid Waste Management (SWMD)';
+    detailTeam.textContent = r.assignedTeam || 'Local Ward Sanitation Unit';
+    detailOfficialRef.textContent = r.officialReferenceId || 'Pending Municipal Forwarding';
+    detailCategoryBadge.textContent = r.wasteCategory || r.wasteType || 'General Waste';
+    detailWardBadge.textContent = r.ward || 'Ward 7';
+    detailAddress.textContent = r.address || r.location || 'Location verified';
+
+    // Coordinates & Map
+    const lat = r.latitude || 28.6139;
+    const lon = r.longitude || 77.2090;
+    detailCoords.textContent = `GPS: ${lat.toFixed(5)}, ${lon.toFixed(5)} ${r.locationAccuracy ? `(±${Math.round(r.locationAccuracy)}m)` : ''}`;
+    
+    if (trackingMap && trackingMarker) {
+      trackingMap.setView([lat, lon], 16);
+      trackingMarker.setLatLng([lat, lon]);
+      setTimeout(() => trackingMap.invalidateSize(), 200);
+    }
+
+    // Severity styling
+    const sev = r.severity || r.priority || 'Medium';
+    detailSeverityBadge.textContent = `${sev} Severity`;
+    if (sev === 'Critical') {
+      detailSeverityBadge.className = 'text-xs font-bold px-3 py-1 rounded-full bg-red-100 text-red-800 border border-red-300 animate-pulse';
+    } else if (sev === 'High') {
+      detailSeverityBadge.className = 'text-xs font-bold px-3 py-1 rounded-full bg-orange-100 text-orange-800 border border-orange-300';
+    } else {
+      detailSeverityBadge.className = 'text-xs font-bold px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300';
+    }
+
+    // Status styling
+    detailStatusText.textContent = r.status || 'Submitted to GoGreen';
+
+    // Photos
+    detailReportPhoto.src = r.imageUrl || 'https://images.unsplash.com/photo-1618477461853-cf6ed80faba5?auto=format&fit=crop&w=600&q=80';
+
+    if (r.resolutionImageUrl) {
+      detailResolutionPhoto.src = r.resolutionImageUrl;
+      detailResolutionPhoto.classList.remove('hidden');
+      noResPhotoPlaceholder.classList.add('hidden');
+      if (r.resolutionNotes) {
+        detailResolutionNotes.textContent = r.resolutionNotes;
+        resolutionNotesBox.classList.remove('hidden');
+      } else {
+        resolutionNotesBox.classList.add('hidden');
+      }
+    } else {
+      detailResolutionPhoto.classList.add('hidden');
+      noResPhotoPlaceholder.classList.remove('hidden');
+      resolutionNotesBox.classList.add('hidden');
+    }
+
+    // Update 4-step Progress Tracker
+    updateStepper(r.status);
+
+    // Update Status Audit History Timeline
+    renderTimeline(r.statusHistory || [], r);
+
+    complaintDetailsCard.classList.remove('hidden');
+    lucide.createIcons();
+    complaintDetailsCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function updateStepper(status) {
+    const s1 = document.getElementById('stepNode1');
+    const s2 = document.getElementById('stepNode2');
+    const s3 = document.getElementById('stepNode3');
+    const s4 = document.getElementById('stepNode4');
+
+    [s1, s2, s3, s4].forEach(s => {
+      s.className = 'status-step p-3 rounded-2xl bg-paperdim/50 border border-charcoal/10 opacity-70';
+    });
+
+    // Step 1 is always completed
+    s1.className = 'status-step is-done p-3 rounded-2xl bg-paperdim border border-moss/20';
+
+    if (['Forwarded to Authority', 'Acknowledged', 'Cleanup in Progress', 'In Progress', 'Resolved'].includes(status)) {
+      s2.className = 'status-step is-done p-3 rounded-2xl bg-paperdim border border-moss/20';
+    } else {
+      s1.classList.add('is-active');
+    }
+
+    if (['Cleanup in Progress', 'In Progress', 'Resolved'].includes(status)) {
+      s3.className = 'status-step is-done p-3 rounded-2xl bg-paperdim border border-moss/20';
+    } else if (['Forwarded to Authority', 'Acknowledged'].includes(status)) {
+      s2.classList.add('is-active');
+    }
+
+    if (status === 'Resolved') {
+      s4.className = 'status-step is-done is-active p-3 rounded-2xl bg-emerald-50 border border-emerald-300';
+    } else if (['Cleanup in Progress', 'In Progress'].includes(status)) {
+      s3.classList.add('is-active');
+    }
+  }
+
+  function renderTimeline(history, report) {
+    statusTimeline.innerHTML = '';
+
+    if (!history || history.length === 0) {
+      statusTimeline.innerHTML = `
+        <div class="relative">
+          <span class="absolute -left-[27px] top-1 w-3 h-3 rounded-full bg-emerald-500 border-2 border-white"></span>
+          <p class="text-xs font-bold text-mossdeep">Complaint Logged</p>
+          <p class="text-[11px] text-charcoal/60 mt-0.5">${formatDate(report.createdAt)} · Initial entry created.</p>
+        </div>
+      `;
+      return;
+    }
+
+    history.forEach((item, idx) => {
+      const isLatest = idx === 0;
+      const dotColor = isLatest ? 'bg-emerald-500 ring-4 ring-sprout/20' : 'bg-mossdeep/40';
+
+      const entry = document.createElement('div');
+      entry.className = 'relative';
+      entry.innerHTML = `
+        <span class="absolute -left-[27px] top-1 w-3 h-3 rounded-full ${dotColor} border-2 border-white"></span>
+        <div class="flex items-center justify-between">
+          <p class="text-xs font-bold text-mossdeep">${item.action || item.toStatus}</p>
+          <span class="text-[10px] font-mono text-charcoal/40">${formatDate(item.createdAt)}</span>
+        </div>
+        <p class="text-[11px] text-charcoal/70 mt-0.5">${item.notes || 'Status updated.'}</p>
+        <div class="flex items-center gap-3 text-[10px] text-charcoal/40 mt-1">
+          <span>By: <strong class="text-charcoal/60">${item.updatedBy || 'Municipal System'}</strong></span>
+          ${item.officialReference ? `<span class="font-mono text-clay">Ref: ${item.officialReference}</span>` : ''}
+        </div>
+      `;
+      statusTimeline.appendChild(entry);
+    });
+  }
+
+  async function loadRecentComplaints() {
+    try {
+      const res = await Session.listComplaints({ limit: 4 });
+      if (res && res.reports && res.reports.length > 0) {
+        recentComplaintsGrid.innerHTML = '';
+        res.reports.forEach(rep => {
+          const card = document.createElement('div');
+          card.className = 'p-3.5 rounded-2xl bg-white border border-mossdeep/10 shadow-xs hover:border-moss transition cursor-pointer flex items-center justify-between';
+          card.onclick = () => {
+            trackInput.value = rep.complaintId;
+            fetchComplaintDetails(rep.complaintId);
+          };
+
+          card.innerHTML = `
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl bg-paperdim overflow-hidden shrink-0 border border-moss/10">
+                <img src="${rep.imageUrl || 'https://images.unsplash.com/photo-1618477461853-cf6ed80faba5?auto=format&fit=crop&w=100&q=80'}" class="w-full h-full object-cover" />
+              </div>
+              <div>
+                <p class="font-mono font-bold text-xs text-mossdeep">${rep.complaintId}</p>
+                <p class="text-[10px] text-charcoal/60 truncate max-w-[150px] sm:max-w-[180px]">${rep.wasteCategory} · ${rep.ward}</p>
+              </div>
+            </div>
+            <span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${rep.status === 'Resolved' ? 'bg-emerald-100 text-emerald-800' : 'bg-sprout/20 text-mossdeep'}">
+              ${rep.status}
+            </span>
+          `;
+          recentComplaintsGrid.appendChild(card);
+        });
+      }
+    } catch (e) {
+      // Fail silently if offline
+    }
+  }
+
+  function showNotFound(msg) {
+    notFoundMsg.textContent = msg;
+    notFoundAlert.classList.remove('hidden');
+    lucide.createIcons();
+  }
+
+  function formatDate(isoStr) {
+    if (!isoStr) return 'Recent';
+    try {
+      const d = new Date(isoStr);
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    } catch (e) {
+      return isoStr;
+    }
+  }
+
+})();
+</script>
+</body>
+</html>

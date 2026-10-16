@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Municipal Authority Command Center — Go Green</title>
+<meta name="description" content="Official administrative console for city municipal authorities to review geotagged garbage complaints, dispatch sanitation crews, and verify cleanups." />
+
+<!-- Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          ink: '#101C16',
+          inksoft: '#182922',
+          paper: '#F4F1E6',
+          paperdim: '#EAE6D6',
+          moss: '#2F5D42',
+          mossdeep: '#1F4130',
+          sprout: '#8FBF6D',
+          sproutlight: '#C7E3AE',
+          clay: '#B8703A',
+          claylight: '#E7B98A',
+          charcoal: '#1C2620',
+          sand: '#C9C2A6',
+        },
+        fontFamily: {
+          display: ['Manrope', 'sans-serif'],
+          body: ['Inter', 'sans-serif'],
+          mono: ['JetBrains Mono', 'monospace'],
+        },
+        borderRadius: {
+          xl2: '1.25rem',
+        },
+        boxShadow: {
+          soft: '0 20px 50px -20px rgba(16, 28, 22, 0.25)',
+          card: '0 10px 30px -12px rgba(16, 28, 22, 0.15)',
+        }
+      }
+    }
+  }
+</script>
+
+<!-- Lucide Icons -->
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+
+<!-- Leaflet Map CSS & JS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+<link rel="stylesheet" href="style.css" />
+<script src="session.js"></script>
+
+<style>
+  #cityAdminMap {
+    height: 340px;
+    width: 100%;
+    border-radius: 1.25rem;
+    z-index: 10;
+  }
+  .critical-row {
+    background-color: #FEF2F2 !important;
+    border-left: 4px solid #DC2626 !important;
+  }
+</style>
+</head>
+<body class="bg-paper text-charcoal font-body antialiased min-h-screen flex flex-col">
+
+<!-- Background Sensor Backdrop -->
+<div class="sensor-grid" aria-hidden="true"></div>
+
+<!-- ================= TOP APP BAR ================= -->
+<header class="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-mossdeep/10 shadow-xs">
+  <div class="max-w-7xl mx-auto px-3 sm:px-6">
+    <div class="flex items-center justify-between h-16">
+      
+      <!-- Brand Logo -->
+      <div class="flex items-center gap-2 sm:gap-3">
+        <a href="index.html" class="flex items-center gap-2 group shrink-0">
+          <span class="relative flex h-8 w-8 items-center justify-center rounded-full bg-mossdeep text-sprout">
+            <i data-lucide="shield" class="w-4 h-4"></i>
+            <span class="pulse-ring"></span>
+          </span>
+          <span class="font-display font-extrabold text-base tracking-tight text-mossdeep">Go Green</span>
+        </a>
+        <span class="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-red-100 text-red-800 text-[11px] font-bold">
+          <span class="w-2 h-2 rounded-full bg-red-600 animate-pulse"></span>
+          Municipal Authority Console
+        </span>
+        <span class="sm:hidden inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-100 text-red-800 text-[10px] font-bold">
+          <span class="w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse"></span>
+          Admin
+        </span>
+      </div>
+
+      <!-- User Admin Pill & Actions -->
+      <div class="flex items-center gap-1.5 sm:gap-3">
+        <div id="adminUserPill" class="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-moss/10 border border-moss/20 text-xs">
+          <i data-lucide="user-check" class="w-3.5 h-3.5 text-moss"></i>
+          <span id="adminNameLabel" class="font-bold text-mossdeep">Admin: Ward Supervisor</span>
+        </div>
+        <a href="dashboard.html" class="btn-ghost text-xs py-1.5 px-2 sm:px-3 flex items-center gap-1" title="Citizen Dashboard">
+          <i data-lucide="layout-dashboard" class="w-3.5 h-3.5 text-moss"></i>
+          <span class="hidden sm:inline">Citizen Portal</span>
+        </a>
+        <button id="adminLogoutBtn" class="btn-outline text-xs py-1.5 px-2.5 sm:px-3 text-red-700 hover:bg-red-50">Logout</button>
+      </div>
+
+    </div>
+  </div>
+</header>
+
+<!-- ================= AUTH GUARD / DEMO LOGIN MODAL ================= -->
+<div id="authGuardModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+  <div class="bg-white rounded-3xl max-w-md w-full p-6 sm:p-8 border border-mossdeep/10 shadow-2xl text-center space-y-4">
+    <div class="w-14 h-14 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto">
+      <i data-lucide="lock" class="w-6 h-6"></i>
+    </div>
+    <h3 class="font-display font-extrabold text-xl text-mossdeep">Administrator Access Required</h3>
+    <p class="text-xs text-charcoal/70">
+      The Municipal Authority Console is restricted to authorized municipal officers and ward supervisors.
+    </p>
+
+    <div class="p-4 rounded-2xl bg-paperdim text-left text-xs space-y-1.5">
+      <p class="font-bold text-mossdeep">Default Municipal Admin Credentials:</p>
+      <p class="font-mono text-[11px] text-charcoal/80">Email: <strong>admin@gogreen.city</strong></p>
+      <p class="font-mono text-[11px] text-charcoal/80">Password: <strong>admin123</strong></p>
+    </div>
+
+    <button type="button" id="quickAdminLoginBtn" class="btn-primary w-full py-3 rounded-xl text-xs font-bold shadow-md flex items-center justify-center gap-2">
+      <i data-lucide="log-in" class="w-4 h-4"></i> Login as Municipal Supervisor
+    </button>
+    <a href="index.html" class="inline-block text-xs text-charcoal/50 hover:underline">Return to Public Homepage</a>
+  </div>
+</div>
+
+<!-- ================= MAIN ADMIN CONTENT ================= -->
+<main class="max-w-7xl mx-auto px-4 sm:px-6 py-6 w-full flex-1 space-y-6">
+
+  <!-- Overview Stats Row -->
+  <div class="grid grid-cols-2 lg:grid-cols-5 gap-3.5">
+    
+    <div class="bg-white p-4 rounded-2xl border border-mossdeep/10 shadow-xs">
+      <p class="text-[10px] uppercase font-mono tracking-wider text-charcoal/50 font-bold">Total Complaints</p>
+      <p id="statTotal" class="font-display font-extrabold text-2xl text-mossdeep mt-1">--</p>
+      <p class="text-[10px] text-charcoal/50 mt-0.5">Across all 42 city wards</p>
+    </div>
+
+    <div class="bg-white p-4 rounded-2xl border border-mossdeep/10 shadow-xs">
+      <p class="text-[10px] uppercase font-mono tracking-wider text-charcoal/50 font-bold">Pending Dispatch</p>
+      <p id="statPending" class="font-display font-extrabold text-2xl text-amber-600 mt-1">--</p>
+      <p class="text-[10px] text-charcoal/50 mt-0.5">Awaiting crew assignment</p>
+    </div>
+
+    <div class="bg-white p-4 rounded-2xl border border-mossdeep/10 shadow-xs">
+      <p class="text-[10px] uppercase font-mono tracking-wider text-charcoal/50 font-bold">In Progress</p>
+      <p id="statInProgress" class="font-display font-extrabold text-2xl text-blue-600 mt-1">--</p>
+      <p class="text-[10px] text-charcoal/50 mt-0.5">Crews currently on-site</p>
+    </div>
+
+    <div class="bg-white p-4 rounded-2xl border border-mossdeep/10 shadow-xs">
+      <p class="text-[10px] uppercase font-mono tracking-wider text-charcoal/50 font-bold">Resolved & Verified</p>
+      <p id="statResolved" class="font-display font-extrabold text-2xl text-emerald-600 mt-1">--</p>
+      <p class="text-[10px] text-emerald-700 font-bold mt-0.5" id="statRate">--% Resolution Rate</p>
+    </div>
+
+    <div class="bg-red-50 p-4 rounded-2xl border border-red-200 shadow-xs col-span-2 lg:col-span-1">
+      <div class="flex items-center justify-between">
+        <p class="text-[10px] uppercase font-mono tracking-wider text-red-700 font-bold">Critical Priority</p>
+        <span class="w-2 h-2 rounded-full bg-red-600 animate-ping"></span>
+      </div>
+      <p id="statCritical" class="font-display font-extrabold text-2xl text-red-700 mt-1">--</p>
+      <p class="text-[10px] text-red-800/70 mt-0.5">Urgent hazards / blockages</p>
+    </div>
+
+  </div>
+
+  <!-- City Map: Multi-Marker Complaint Radar -->
+  <div class="bg-white p-5 rounded-3xl border border-mossdeep/10 shadow-soft space-y-3">
+    <div class="flex items-center justify-between">
+      <div>
+        <h3 class="font-display font-bold text-base text-mossdeep flex items-center gap-2">
+          <i data-lucide="map" class="w-4 h-4 text-moss"></i>
+          Citywide Geotagged Complaint Heatmap
+        </h3>
+        <p class="text-xs text-charcoal/60 mt-0.5">Visual representation of citizen-reported garbage hotspots color-coded by severity.</p>
+      </div>
+      <div class="flex items-center gap-3 text-[11px] font-semibold">
+        <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-red-600"></span> Critical</span>
+        <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-orange-500"></span> High</span>
+        <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-amber-400"></span> Medium</span>
+        <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> Resolved</span>
+      </div>
+    </div>
+
+    <div id="cityAdminMap"></div>
+  </div>
+
+  <!-- Filters & Search Toolbar -->
+  <div class="bg-white p-4 rounded-2xl border border-mossdeep/10 shadow-xs flex flex-wrap items-center justify-between gap-3">
+    
+    <!-- Search Bar -->
+    <div class="relative flex-1 min-w-[220px]">
+      <input type="text" id="adminSearchInput" placeholder="Search by Complaint ID, address, citizen name..." class="w-full p-2.5 pl-9 rounded-xl bg-paperdim border border-mossdeep/15 text-xs font-semibold focus:outline-none focus:border-moss" />
+      <i data-lucide="search" class="w-4 h-4 text-moss absolute left-3 top-3 opacity-60"></i>
+    </div>
+
+    <!-- Dropdown Filters -->
+    <div class="flex flex-wrap items-center gap-2">
+      
+      <!-- Ward Filter -->
+      <select id="filterWard" class="p-2.5 rounded-xl bg-paperdim border border-mossdeep/15 text-xs font-semibold focus:outline-none focus:border-moss">
+        <option value="all">All Wards</option>
+        <option value="Ward 1">Ward 1</option>
+        <option value="Ward 2">Ward 2</option>
+        <option value="Ward 3">Ward 3</option>
+        <option value="Ward 4">Ward 4</option>
+        <option value="Ward 5">Ward 5</option>
+        <option value="Ward 6">Ward 6</option>
+        <option value="Ward 7">Ward 7</option>
+        <option value="Ward 8">Ward 8</option>
+        <option value="Ward 9">Ward 9</option>
+      </select>
+
+      <!-- Category Filter -->
+      <select id="filterCategory" class="p-2.5 rounded-xl bg-paperdim border border-mossdeep/15 text-xs font-semibold focus:outline-none focus:border-moss">
+        <option value="all">All Categories</option>
+        <option value="Roadside Garbage">Roadside Garbage</option>
+        <option value="Overflowing Dustbin">Overflowing Dustbin</option>
+        <option value="Plastic Waste">Plastic Waste</option>
+        <option value="Construction Waste">Construction Waste</option>
+        <option value="Drainage Waste">Drainage Waste</option>
+        <option value="Illegal Dumping">Illegal Dumping</option>
+      </select>
+
+      <!-- Severity Filter -->
+      <select id="filterSeverity" class="p-2.5 rounded-xl bg-paperdim border border-mossdeep/15 text-xs font-semibold focus:outline-none focus:border-moss">
+        <option value="all">All Severities</option>
+        <option value="Critical">Critical</option>
+        <option value="High">High</option>
+        <option value="Medium">Medium</option>
+        <option value="Low">Low</option>
+      </select>
+
+      <!-- Status Filter -->
+      <select id="filterStatus" class="p-2.5 rounded-xl bg-paperdim border border-mossdeep/15 text-xs font-semibold focus:outline-none focus:border-moss">
+        <option value="all">All Statuses</option>
+        <option value="Submitted to GoGreen">Submitted to GoGreen</option>
+        <option value="Forwarded to Authority">Forwarded to Authority</option>
+        <option value="Cleanup in Progress">Cleanup in Progress</option>
+        <option value="Resolved">Resolved</option>
+        <option value="Rejected">Rejected</option>
+      </select>
+
+      <button id="resetFiltersBtn" class="btn-ghost text-xs p-2.5 text-charcoal/60 hover:text-moss" title="Reset Filters">
+        <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- Complaints Table & Cards Container -->
+  <div class="bg-white rounded-3xl border border-mossdeep/10 shadow-soft overflow-hidden">
+    <div class="p-5 border-b border-charcoal/10 flex items-center justify-between">
+      <h3 class="font-display font-bold text-base text-mossdeep flex items-center gap-2">
+        <i data-lucide="list-filter" class="w-4 h-4 text-moss"></i>
+        Garbage Complaints Registry
+      </h3>
+      <span id="filteredCountLabel" class="text-xs font-mono font-bold text-charcoal/50">Showing -- reports</span>
+    </div>
+
+    <!-- Table on desktop / Cards on mobile -->
+    <div class="overflow-x-auto">
+      <table class="w-full text-left text-xs">
+        <thead class="bg-paperdim text-charcoal/60 uppercase font-mono text-[10px] tracking-wider border-b border-charcoal/10">
+          <tr>
+            <th class="p-3.5 pl-5">Complaint ID & Photo</th>
+            <th class="p-3.5">Category & Ward</th>
+            <th class="p-3.5">Severity</th>
+            <th class="p-3.5">Assigned Department</th>
+            <th class="p-3.5">Status</th>
+            <th class="p-3.5">Date</th>
+            <th class="p-3.5 pr-5 text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="complaintsTableBody" class="divide-y divide-charcoal/5">
+          <!-- Populated by JS -->
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Empty state -->
+    <div id="noComplaintsPlaceholder" class="hidden text-center py-12 text-charcoal/50 text-xs">
+      <i data-lucide="inbox" class="w-8 h-8 mx-auto mb-2 opacity-50"></i>
+      <p class="font-bold">No complaints match your filter criteria.</p>
+    </div>
+  </div>
+
+</main>
+
+<!-- ================= COMPLAINT MANAGEMENT MODAL ================= -->
+<div id="manageModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-fadeIn overflow-y-auto">
+  <div class="bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-8 border border-mossdeep/10 shadow-2xl relative space-y-5 my-8">
+    
+    <!-- Modal Header -->
+    <div class="flex items-center justify-between pb-3 border-b border-charcoal/10">
+      <div>
+        <div class="flex items-center gap-2">
+          <span class="text-xs font-mono text-charcoal/50 font-bold">MANAGE COMPLAINT</span>
+          <span id="modalCid" class="font-mono font-extrabold text-base text-mossdeep">GG-GRB-2026-0000</span>
+        </div>
+        <p id="modalCitizenInfo" class="text-xs text-charcoal/60 mt-0.5">Reported by Citizen</p>
+      </div>
+      <button type="button" id="closeModalBtn" class="p-1 rounded-full text-charcoal/50 hover:bg-paperdim text-sm">
+        <i data-lucide="x" class="w-5 h-5"></i>
+      </button>
+    </div>
+
+    <!-- Photos Grid (Reported vs Resolution) -->
+    <div class="grid sm:grid-cols-2 gap-3">
+      <div>
+        <p class="text-[10px] font-bold text-mossdeep mb-1">Reported Photograph (Before)</p>
+        <div class="aspect-4/3 rounded-xl overflow-hidden bg-black/10 border border-charcoal/10">
+          <img id="modalReportPhoto" src="" class="w-full h-full object-cover" />
+        </div>
+      </div>
+      <div>
+        <p class="text-[10px] font-bold text-mossdeep mb-1">Resolution Photograph (After)</p>
+        <div class="aspect-4/3 rounded-xl overflow-hidden bg-paperdim border border-charcoal/10 flex items-center justify-center text-center p-2" id="modalResPhotoWrapper">
+          <img id="modalResolutionPhoto" src="" class="hidden w-full h-full object-cover" />
+          <p id="modalNoResText" class="text-[11px] text-charcoal/50">No cleanup verification photo uploaded yet.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Location & Description -->
+    <div class="p-3.5 rounded-2xl bg-paperdim text-xs space-y-1.5">
+      <p class="font-bold text-mossdeep flex items-center gap-1.5">
+        <i data-lucide="map-pin" class="w-3.5 h-3.5 text-moss"></i>
+        <span id="modalLocationText">Location details</span>
+      </p>
+      <p id="modalDescriptionText" class="text-charcoal/70 leading-relaxed italic">"..."</p>
+    </div>
+
+    <!-- Admin Action Form -->
+    <form id="adminActionForm" class="space-y-4 pt-2">
+      
+      <div class="grid sm:grid-cols-2 gap-3">
+        <!-- Status Update -->
+        <div>
+          <label class="block text-xs font-bold text-mossdeep mb-1">Update Status</label>
+          <select id="modalStatusSelect" class="w-full p-2.5 rounded-xl bg-paperdim border border-mossdeep/20 text-xs font-semibold focus:outline-none focus:border-moss">
+            <option value="Submitted to GoGreen">Submitted to GoGreen</option>
+            <option value="Pending Municipal Submission">Pending Municipal Submission</option>
+            <option value="Forwarded to Authority">Forwarded to Authority</option>
+            <option value="Acknowledged">Acknowledged</option>
+            <option value="Cleanup in Progress">Cleanup in Progress</option>
+            <option value="Resolved">Resolved</option>
+            <option value="Rejected">Rejected</option>
+          </select>
+        </div>
+
+        <!-- Assign Cleanup Team -->
+        <div>
+          <label class="block text-xs font-bold text-mossdeep mb-1">Assign Cleanup Team</label>
+          <input type="text" id="modalTeamInput" placeholder="e.g. Rapid Sanitation Crew #101" class="w-full p-2.5 rounded-xl bg-paperdim border border-mossdeep/20 text-xs font-semibold focus:outline-none focus:border-moss" />
+        </div>
+      </div>
+
+      <!-- Forward to Municipal Authority Action -->
+      <div class="p-3 rounded-2xl bg-sprout/15 border border-moss/20 flex items-center justify-between">
+        <div>
+          <p class="text-xs font-bold text-mossdeep">Municipal Dispatch Gateway</p>
+          <p class="text-[10px] text-charcoal/60">Generate official municipal reference ID and send SMS/in-app alert to citizen.</p>
+        </div>
+        <button type="button" id="forwardAuthorityBtn" class="btn-primary text-xs py-1.5 px-3">
+          <i data-lucide="send" class="w-3.5 h-3.5"></i> Forward to Authority
+        </button>
+      </div>
+
+      <!-- Resolution Section (Visible when marking resolved) -->
+      <div id="resolutionUploadSection" class="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 space-y-2.5">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold text-emerald-900 flex items-center gap-1.5">
+            <i data-lucide="camera" class="w-4 h-4 text-emerald-700"></i>
+            Upload Resolution Photograph (Proof of Cleanup)
+          </span>
+          <span class="text-[10px] font-mono font-bold text-emerald-700">VERIFICATION PROOF</span>
+        </div>
+        
+        <input type="file" id="resolutionFileInput" accept="image/*" class="w-full text-xs file:mr-3 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-emerald-600 file:text-white hover:file:bg-emerald-700 cursor-pointer" />
+        
+        <textarea id="modalResolutionNotes" rows="2" placeholder="Add resolution notes (e.g. Cleared 250kg of plastic debris, site sanitized, new dustbin deployed)..." class="w-full p-2.5 rounded-xl bg-white border border-emerald-300 text-xs font-semibold focus:outline-none focus:border-emerald-600"></textarea>
+      </div>
+
+      <!-- Remarks / Supervisor Notes -->
+      <div>
+        <label class="block text-xs font-bold text-mossdeep mb-1">Supervisor Audit Remarks</label>
+        <input type="text" id="modalNotesInput" placeholder="Reason for status change or work order remarks..." class="w-full p-2.5 rounded-xl bg-paperdim border border-mossdeep/20 text-xs font-semibold focus:outline-none focus:border-moss" />
+      </div>
+
+      <!-- Submit / Save Button -->
+      <div class="flex justify-end gap-2 pt-2">
+        <button type="button" id="cancelModalBtn" class="btn-ghost text-xs py-2 px-4">Cancel</button>
+        <button type="submit" id="saveChangesBtn" class="btn-primary text-xs py-2 px-5 shadow-md">Save Changes</button>
+      </div>
+
+    </form>
+
+  </div>
+</div>
+
+<!-- ================= FOOTER ================= -->
+<footer class="mt-12 py-6 border-t border-mossdeep/10 text-center text-xs text-charcoal/50">
+  <div class="max-w-7xl mx-auto px-4 flex flex-wrap items-center justify-between gap-4">
+    <p>© 2026 Go Green Smart Waste Platform · Municipal Public Cleanliness Initiative</p>
+    <div class="flex items-center gap-4">
+      <a href="index.html" class="hover:text-moss">Home</a>
+      <a href="report.html" class="hover:text-moss">Report Garbage</a>
+      <a href="track.html" class="hover:text-moss">Track Complaint</a>
+      <a href="dashboard.html" class="hover:text-moss">Citizen Dashboard</a>
+    </div>
+  </div>
+</footer>
+
+<!-- Interactive Admin Script -->
+<script>
+(() => {
+  let allReports = [];
+  let adminMap = null;
+  let mapMarkers = [];
+  let currentActiveReport = null;
+
+  // DOM Elements
+  const authGuardModal = document.getElementById('authGuardModal');
+  const quickAdminLoginBtn = document.getElementById('quickAdminLoginBtn');
+  const adminLogoutBtn = document.getElementById('adminLogoutBtn');
+  const adminUserPill = document.getElementById('adminUserPill');
+  const adminNameLabel = document.getElementById('adminNameLabel');
+
+  const statTotal = document.getElementById('statTotal');
+  const statPending = document.getElementById('statPending');
+  const statInProgress = document.getElementById('statInProgress');
+  const statResolved = document.getElementById('statResolved');
+  const statRate = document.getElementById('statRate');
+  const statCritical = document.getElementById('statCritical');
+
+  const adminSearchInput = document.getElementById('adminSearchInput');
+  const filterWard = document.getElementById('filterWard');
+  const filterCategory = document.getElementById('filterCategory');
+  const filterSeverity = document.getElementById('filterSeverity');
+  const filterStatus = document.getElementById('filterStatus');
+  const resetFiltersBtn = document.getElementById('resetFiltersBtn');
+  const complaintsTableBody = document.getElementById('complaintsTableBody');
+  const filteredCountLabel = document.getElementById('filteredCountLabel');
+  const noComplaintsPlaceholder = document.getElementById('noComplaintsPlaceholder');
+
+  // Modal Elements
+  const manageModal = document.getElementById('manageModal');
+  const closeModalBtn = document.getElementById('closeModalBtn');
+  const cancelModalBtn = document.getElementById('cancelModalBtn');
+  const modalCid = document.getElementById('modalCid');
+  const modalCitizenInfo = document.getElementById('modalCitizenInfo');
+  const modalReportPhoto = document.getElementById('modalReportPhoto');
+  const modalResolutionPhoto = document.getElementById('modalResolutionPhoto');
+  const modalNoResText = document.getElementById('modalNoResText');
+  const modalLocationText = document.getElementById('modalLocationText');
+  const modalDescriptionText = document.getElementById('modalDescriptionText');
+  const modalStatusSelect = document.getElementById('modalStatusSelect');
+  const modalTeamInput = document.getElementById('modalTeamInput');
+  const modalNotesInput = document.getElementById('modalNotesInput');
+  const modalResolutionNotes = document.getElementById('modalResolutionNotes');
+  const resolutionFileInput = document.getElementById('resolutionFileInput');
+  const adminActionForm = document.getElementById('adminActionForm');
+  const forwardAuthorityBtn = document.getElementById('forwardAuthorityBtn');
+
+  document.addEventListener('DOMContentLoaded', () => {
+    lucide.createIcons();
+    checkAdminAuth();
+  });
+
+  function checkAdminAuth() {
+    const user = Session.getUser();
+    if (!user || user.role !== 'admin') {
+      authGuardModal.classList.remove('hidden');
+    } else {
+      adminUserPill.classList.remove('hidden');
+      adminNameLabel.textContent = `Admin: ${user.name || 'Supervisor'}`;
+      initAdminDashboard();
+    }
+  }
+
+  quickAdminLoginBtn.addEventListener('click', async () => {
+    try {
+      quickAdminLoginBtn.disabled = true;
+      quickAdminLoginBtn.textContent = "Authenticating...";
+      await Session.login("admin@gogreen.city", "admin123");
+      authGuardModal.classList.add('hidden');
+      checkAdminAuth();
+    } catch (err) {
+      alert("Login failed: " + err.message);
+      quickAdminLoginBtn.disabled = false;
+      quickAdminLoginBtn.textContent = "Login as Municipal Supervisor";
+    }
+  });
+
+  adminLogoutBtn.addEventListener('click', () => {
+    Session.clear();
+    window.location.href = "login.html";
+  });
+
+  function initAdminDashboard() {
+    initAdminMap();
+    fetchStats();
+    loadAllReports();
+
+    // Filters event listeners
+    adminSearchInput.addEventListener('input', applyFilters);
+    filterWard.addEventListener('change', applyFilters);
+    filterCategory.addEventListener('change', applyFilters);
+    filterSeverity.addEventListener('change', applyFilters);
+    filterStatus.addEventListener('change', applyFilters);
+    resetFiltersBtn.addEventListener('click', () => {
+      adminSearchInput.value = '';
+      filterWard.value = 'all';
+      filterCategory.value = 'all';
+      filterSeverity.value = 'all';
+      filterStatus.value = 'all';
+      applyFilters();
+    });
+  }
+
+  function initAdminMap() {
+    adminMap = L.map('cityAdminMap', {
+      zoomControl: true,
+      scrollWheelZoom: false
+    }).setView([28.6139, 77.2090], 12);
+
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '© OpenStreetMap contributors'
+    }).addTo(adminMap);
+  }
+
+  async function fetchStats() {
+    try {
+      const stats = await Session.getComplaintStats();
+      if (stats) {
+        statTotal.textContent = stats.total || 0;
+        statPending.textContent = stats.pending || 0;
+        statInProgress.textContent = stats.inProgress || 0;
+        statResolved.textContent = stats.resolved || 0;
+        statRate.textContent = `${stats.resolutionRate || 0}% Resolution Rate`;
+        statCritical.textContent = stats.critical || 0;
+      }
+    } catch (e) {
+      console.warn("[Stats fetch]", e);
+    }
+  }
+
+  async function loadAllReports() {
+    try {
+      const res = await Session.listComplaints({ limit: 200 });
+      if (res && res.reports) {
+        allReports = res.reports;
+        renderMapMarkers(allReports);
+        applyFilters();
+      }
+    } catch (e) {
+      console.error("[Load reports]", e);
+    }
+  }
+
+  function renderMapMarkers(reports) {
+    // Clear existing
+    mapMarkers.forEach(m => adminMap.removeLayer(m));
+    mapMarkers = [];
+
+    reports.forEach(r => {
+      const lat = r.latitude || (28.6139 + (Math.random() - 0.5) * 0.08);
+      const lon = r.longitude || (77.2090 + (Math.random() - 0.5) * 0.08);
+
+      let pinColor = '#2F5D42';
+      const sev = r.severity || r.priority || 'Medium';
+      if (r.status === 'Resolved') pinColor = '#10B981';
+      else if (sev === 'Critical') pinColor = '#DC2626';
+      else if (sev === 'High') pinColor = '#F97316';
+      else if (sev === 'Medium') pinColor = '#FBBF24';
+
+      const icon = L.divIcon({
+        className: 'custom-pin',
+        html: `
+          <div style="background:${pinColor}; color:white; width:26px; height:26px; border-radius:50%; display:flex; align-items:center; justify-content:center; box-shadow:0 3px 10px rgba(0,0,0,0.3); border:2px solid white; font-weight:bold; font-size:10px;">
+            ${sev === 'Critical' ? '!' : '●'}
+          </div>
+        `,
+        iconSize: [26, 26],
+        iconAnchor: [13, 26]
+      });
+
+      const marker = L.marker([lat, lon], { icon }).addTo(adminMap);
+      marker.bindPopup(`
+        <div style="font-family:Inter,sans-serif; font-size:11px; padding:2px;">
+          <p style="font-weight:bold; color:#1F4130;">${r.complaintId}</p>
+          <p style="color:#666;">${r.wasteCategory} · ${r.ward}</p>
+          <p style="font-weight:bold; color:${pinColor};">${r.status}</p>
+          <button onclick="window.openManageModal('${r.complaintId}')" style="margin-top:6px; background:#2F5D42; color:white; padding:3px 8px; border-radius:4px; font-size:10px; font-weight:bold; border:none; cursor:pointer;">Manage</button>
+        </div>
+      `);
+      mapMarkers.push(marker);
+    });
+  }
+
+  function applyFilters() {
+    const q = adminSearchInput.value.toLowerCase().trim();
+    const ward = filterWard.value;
+    const cat = filterCategory.value;
+    const sev = filterSeverity.value;
+    const status = filterStatus.value;
+
+    const filtered = allReports.filter(r => {
+      const matchQ = !q || (
+        (r.complaintId && r.complaintId.toLowerCase().includes(q)) ||
+        (r.address && r.address.toLowerCase().includes(q)) ||
+        (r.name && r.name.toLowerCase().includes(q)) ||
+        (r.description && r.description.toLowerCase().includes(q))
+      );
+
+      const matchWard = ward === 'all' || r.ward === ward;
+      const matchCat = cat === 'all' || r.wasteCategory === cat || r.wasteType === cat;
+      const matchSev = sev === 'all' || (r.severity === sev || r.priority === sev);
+      const matchStatus = status === 'all' || r.status === status;
+
+      return matchQ && matchWard && matchCat && matchSev && matchStatus;
+    });
+
+    renderTable(filtered);
+    filteredCountLabel.textContent = `Showing ${filtered.length} of ${allReports.length} complaints`;
+  }
+
+  function renderTable(reports) {
+    complaintsTableBody.innerHTML = '';
+
+    if (reports.length === 0) {
+      noComplaintsPlaceholder.classList.remove('hidden');
+      return;
+    }
+    noComplaintsPlaceholder.classList.add('hidden');
+
+    reports.forEach(r => {
+      const tr = document.createElement('tr');
+      const isCritical = (r.severity === 'Critical' || r.priority === 'Critical') && r.status !== 'Resolved';
+      if (isCritical) tr.className = 'critical-row hover:bg-red-100/50 transition';
+      else tr.className = 'hover:bg-paperdim/50 transition';
+
+      const thumb = r.imageUrl || 'https://images.unsplash.com/photo-1618477461853-cf6ed80faba5?auto=format&fit=crop&w=100&q=80';
+      const sev = r.severity || r.priority || 'Medium';
+
+      let sevClass = 'bg-emerald-100 text-emerald-800';
+      if (sev === 'Critical') sevClass = 'bg-red-200 text-red-900 font-extrabold animate-pulse';
+      else if (sev === 'High') sevClass = 'bg-orange-100 text-orange-900';
+      else if (sev === 'Medium') sevClass = 'bg-amber-100 text-amber-900';
+
+      tr.innerHTML = `
+        <td class="p-3.5 pl-5">
+          <div class="flex items-center gap-2.5">
+            <div class="w-10 h-10 rounded-xl bg-black/10 overflow-hidden shrink-0 border border-charcoal/10">
+              <img src="${thumb}" class="w-full h-full object-cover" />
+            </div>
+            <div>
+              <p class="font-mono font-bold text-xs text-mossdeep">${r.complaintId}</p>
+              <p class="text-[10px] text-charcoal/50 truncate max-w-[120px]">${r.address || r.location}</p>
+            </div>
+          </div>
+        </td>
+        <td class="p-3.5">
+          <p class="font-bold text-mossdeep">${r.wasteCategory || r.wasteType}</p>
+          <span class="text-[10px] font-mono text-charcoal/50">${r.ward}</span>
+        </td>
+        <td class="p-3.5">
+          <span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${sevClass}">
+            ${sev}
+          </span>
+        </td>
+        <td class="p-3.5">
+          <p class="font-semibold text-mossdeep truncate max-w-[150px]">${r.assignedDepartment || 'Solid Waste Mgmt'}</p>
+          <p class="text-[10px] text-charcoal/50 font-mono">${r.assignedTeam || 'Ward Team'}</p>
+        </td>
+        <td class="p-3.5">
+          <span class="text-[10px] font-bold px-2.5 py-1 rounded-full ${r.status === 'Resolved' ? 'bg-emerald-100 text-emerald-800' : 'bg-sprout/20 text-mossdeep'}">
+            ${r.status}
+          </span>
+        </td>
+        <td class="p-3.5 font-mono text-[10px] text-charcoal/50">
+          ${formatDate(r.createdAt)}
+        </td>
+        <td class="p-3.5 pr-5 text-right">
+          <button onclick="window.openManageModal('${r.complaintId}')" class="btn-primary text-xs py-1 px-3 shadow-xs">
+            Manage
+          </button>
+        </td>
+      `;
+
+      complaintsTableBody.appendChild(tr);
+    });
+    lucide.createIcons();
+  }
+
+  // Window global hook so table rows and map popups can open modal
+  window.openManageModal = function(cid) {
+    const report = allReports.find(r => r.complaintId === cid || String(r.id) === String(cid));
+    if (!report) return;
+
+    currentActiveReport = report;
+    modalCid.textContent = report.complaintId;
+    modalCitizenInfo.textContent = `Reported by ${report.name || 'Citizen'} (${report.email || '--'}) · ${report.ward}`;
+    modalReportPhoto.src = report.imageUrl || 'https://images.unsplash.com/photo-1618477461853-cf6ed80faba5?auto=format&fit=crop&w=400&q=80';
+
+    if (report.resolutionImageUrl) {
+      modalResolutionPhoto.src = report.resolutionImageUrl;
+      modalResolutionPhoto.classList.remove('hidden');
+      modalNoResText.classList.add('hidden');
+    } else {
+      modalResolutionPhoto.classList.add('hidden');
+      modalNoResText.classList.remove('hidden');
+    }
+
+    modalLocationText.textContent = `${report.address || report.location} (Lat: ${report.latitude || '--'}, Lon: ${report.longitude || '--'})`;
+    modalDescriptionText.textContent = `"${report.description || 'No description'}"`;
+    modalStatusSelect.value = report.status;
+    modalTeamInput.value = report.assignedTeam || '';
+    modalNotesInput.value = '';
+    modalResolutionNotes.value = report.resolutionNotes || '';
+
+    manageModal.classList.remove('hidden');
+    lucide.createIcons();
+  };
+
+  closeModalBtn.addEventListener('click', () => manageModal.classList.add('hidden'));
+  cancelModalBtn.addEventListener('click', () => manageModal.classList.add('hidden'));
+
+  // Forward to Municipal Authority Action
+  forwardAuthorityBtn.addEventListener('click', async () => {
+    if (!currentActiveReport) return;
+    try {
+      forwardAuthorityBtn.disabled = true;
+      forwardAuthorityBtn.textContent = "Forwarding...";
+      const res = await Session.forwardComplaint(currentActiveReport.complaintId, {
+        assignedTeam: modalTeamInput.value || undefined,
+        notes: modalNotesInput.value || "Forwarded to Municipal Authority via Admin Console"
+      });
+      alert(`Success! Work Order Reference #${res.officialReference} issued.`);
+      manageModal.classList.add('hidden');
+      loadAllReports();
+      fetchStats();
+    } catch (err) {
+      alert("Forwarding failed: " + err.message);
+    } finally {
+      forwardAuthorityBtn.disabled = false;
+      forwardAuthorityBtn.innerHTML = `<i data-lucide="send" class="w-3.5 h-3.5"></i> Forward to Authority`;
+      lucide.createIcons();
+    }
+  });
+
+  // Save changes from modal
+  adminActionForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!currentActiveReport) return;
+
+    const newStatus = modalStatusSelect.value;
+    const team = modalTeamInput.value;
+    const notes = modalNotesInput.value;
+    const resNotes = modalResolutionNotes.value;
+    const resFile = resolutionFileInput.files[0];
+
+    try {
+      // If marking as resolved and has photo
+      if (newStatus === 'Resolved' && resFile) {
+        const formData = new FormData();
+        formData.append('resolutionImage', resFile);
+        formData.append('resolutionNotes', resNotes || notes || 'Cleanup completed and verified.');
+        await Session.resolveComplaint(currentActiveReport.complaintId, formData);
+      } else {
+        await Session.updateComplaintStatus(currentActiveReport.complaintId, {
+          status: newStatus,
+          assignedTeam: team,
+          notes: notes,
+          resolutionNotes: resNotes
+        });
+      }
+
+      manageModal.classList.add('hidden');
+      loadAllReports();
+      fetchStats();
+    } catch (err) {
+      alert("Failed to update status: " + err.message);
+    }
+  });
+
+  function formatDate(isoStr) {
+    if (!isoStr) return '--';
+    try {
+      const d = new Date(isoStr);
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    } catch (e) {
+      return isoStr;
+    }
+  }
+
+})();
+</script>
+</body>
+</html>
