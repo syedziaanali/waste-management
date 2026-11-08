@@ -99,6 +99,7 @@ const Session = (() => {
         headers,
       });
 
+      const contentType = response.headers.get('content-type') || '';
       const data = await response.json().catch(() => ({}));
 
       if (!response.ok) {
@@ -112,6 +113,12 @@ const Session = (() => {
         throw error;
       }
 
+      // If server returned an HTML fallback page instead of JSON API response
+      if (contentType.includes('text/html')) {
+        throw new Error('API returned HTML page instead of JSON');
+      }
+
+      return data;
     } catch (err) {
       console.warn(`[API] Server unreachable for ${endpoint} (${err.message}). Activating local responsive mode.`);
       const fallback = handleFallbackMock(endpoint, options);
@@ -344,29 +351,90 @@ const Session = (() => {
 
 
   async function login(email, password) {
-    const data = await apiFetch('/api/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({ email, password }),
-    });
-    setAuth(data.token, data.user);
+    let data;
+    try {
+      data = await apiFetch('/api/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email, password }),
+      });
+    } catch (err) {
+      if (err.status === 401 && err.data && err.data.error && err.data.error.toLowerCase().includes('invalid')) {
+        throw err;
+      }
+      console.warn('[Session.login] Falling back to local auth mode:', err.message);
+    }
+
+    if (!data || !data.token) {
+      data = handleFallbackMock('/api/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email, password }),
+      });
+    }
+
+    if (data && data.token) {
+      setAuth(data.token, data.user);
+    }
     return data;
   }
 
   async function signup(name, email, password, ward = 'Ward 7') {
-    const data = await apiFetch('/api/auth/signup', {
-      method: 'POST',
-      body: JSON.stringify({ name, email, password, ward }),
-    });
-    setAuth(data.token, data.user);
+    let data;
+    try {
+      data = await apiFetch('/api/auth/signup', {
+        method: 'POST',
+        body: JSON.stringify({ name, email, password, ward }),
+      });
+    } catch (err) {
+      if (err.status === 409 || (err.data && err.data.alreadyRegistered)) {
+        throw err;
+      }
+      console.warn('[Session.signup] Falling back to local auth mode:', err.message);
+    }
+
+    if (!data || !data.token) {
+      data = handleFallbackMock('/api/auth/signup', {
+        method: 'POST',
+        body: JSON.stringify({ name, email, password, ward }),
+      });
+    }
+
+    if (data && data.token) {
+      setAuth(data.token, data.user);
+    }
     return data;
   }
 
   async function googleLogin(payload) {
-    const data = await apiFetch('/api/auth/google', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
-    setAuth(data.token, data.user);
+    let data;
+    try {
+      data = await apiFetch('/api/auth/google', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+    } catch (err) {
+      console.warn('[Session.googleLogin] Falling back to client auth mode:', err.message);
+    }
+
+    if (!data || !data.token) {
+      const email = payload.email || 'citizen@gogreen.city';
+      const name = payload.name || 'Eco Citizen';
+      const mockUser = {
+        id: 'google-user-' + Date.now().toString(36),
+        name: name,
+        email: email,
+        avatarUrl: payload.picture || '',
+        role: 'user',
+        ward: 'Ward 7',
+        ecoPoints: 150,
+        streakDays: 1,
+        impactKg: 5.0
+      };
+      data = { token: 'mock-google-token-' + Date.now(), user: mockUser };
+    }
+
+    if (data && data.token) {
+      setAuth(data.token, data.user);
+    }
     return data;
   }
 
