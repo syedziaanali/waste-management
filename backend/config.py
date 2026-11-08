@@ -1,7 +1,24 @@
 import os
+import tempfile
 from datetime import timedelta
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+
+def _get_storage_dir():
+    if os.environ.get("STORAGE_DIR"):
+        return os.environ["STORAGE_DIR"]
+    if os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+        return "/tmp"
+    try:
+        test_path = os.path.join(BASE_DIR, ".perm_test")
+        with open(test_path, "w") as f:
+            f.write("1")
+        os.remove(test_path)
+        return BASE_DIR
+    except Exception:
+        return tempfile.gettempdir()
+
+STORAGE_DIR = _get_storage_dir()
 
 
 class Config:
@@ -11,13 +28,15 @@ class Config:
     JWT_EXPIRES = timedelta(days=7)
 
     # --- Database (SQLite file, zero setup) ---
-    SQLALCHEMY_DATABASE_URI = os.environ.get(
-        "DATABASE_URL", f"sqlite:///{os.path.join(BASE_DIR, 'gogreen.db')}"
-    )
+    _raw_db = os.environ.get("DATABASE_URL")
+    if _raw_db and _raw_db.startswith("postgres://"):
+        _raw_db = _raw_db.replace("postgres://", "postgresql://", 1)
+
+    SQLALCHEMY_DATABASE_URI = _raw_db or f"sqlite:///{os.path.join(STORAGE_DIR, 'gogreen.db')}"
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
     # --- Uploads (report photos) ---
-    UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
+    UPLOAD_FOLDER = os.path.join(STORAGE_DIR, "uploads")
     MAX_CONTENT_LENGTH = 10 * 1024 * 1024  # 10 MB, matches frontend copy
     ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "gif"}
 

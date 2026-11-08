@@ -26,8 +26,11 @@ def create_app(config_class=Config):
     )
     app.config.from_object(config_class)
 
-    # Ensure upload folder exists
-    os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
+    # Ensure upload folder exists safely
+    try:
+        os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
+    except Exception as e:
+        app.logger.warning(f"Upload directory initialization warning: {e}")
 
     # Initialize extensions
     db.init_app(app)
@@ -58,41 +61,51 @@ def create_app(config_class=Config):
     app.register_blueprint(rewards_bp)
     app.register_blueprint(notifications_bp)
 
-    # --- Serve Frontend Website Directly ---
+    # --- Serve Frontend Website Safely ---
+    def serve_frontend_page(filename):
+        target = os.path.join(FRONTEND_DIR, filename)
+        if os.path.exists(target):
+            return send_from_directory(FRONTEND_DIR, filename)
+        return jsonify({
+            "service": "Go Green Waste Management API",
+            "status": "online",
+            "message": f"Static page '{filename}' is served by Vercel edge CDN."
+        }), 200
+
     @app.get("/")
     @app.get("/index.html")
     def index():
-        return send_from_directory(FRONTEND_DIR, "index.html")
+        return serve_frontend_page("index.html")
 
     @app.get("/login")
     @app.get("/login.html")
     def login_page():
-        return send_from_directory(FRONTEND_DIR, "login.html")
+        return serve_frontend_page("login.html")
 
     @app.get("/signup")
     @app.get("/signup.html")
     def signup_page():
-        return send_from_directory(FRONTEND_DIR, "signup.html")
+        return serve_frontend_page("signup.html")
 
     @app.get("/dashboard")
     @app.get("/dashboard.html")
     def dashboard_page():
-        return send_from_directory(FRONTEND_DIR, "dashboard.html")
+        return serve_frontend_page("dashboard.html")
 
     @app.get("/report")
     @app.get("/report.html")
     def report_page():
-        return send_from_directory(FRONTEND_DIR, "report.html")
+        return serve_frontend_page("report.html")
 
     @app.get("/track")
     @app.get("/track.html")
     def track_page():
-        return send_from_directory(FRONTEND_DIR, "track.html")
+        return serve_frontend_page("track.html")
 
     @app.get("/admin")
     @app.get("/admin.html")
     def admin_page():
-        return send_from_directory(FRONTEND_DIR, "admin.html")
+        return serve_frontend_page("admin.html")
 
     # --- API Info & Health Check ---
     @app.get("/api")
@@ -143,7 +156,10 @@ def create_app(config_class=Config):
         return jsonify({"error": "Internal server error"}), 500
 
     with app.app_context():
-        db.create_all()
+        try:
+            db.create_all()
+        except Exception as e:
+            app.logger.warning(f"Database table creation notice: {e}")
         # Auto-migrate columns for existing SQLite database
         try:
             from sqlalchemy import text
